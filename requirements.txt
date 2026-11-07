@@ -1,0 +1,14 @@
+# Photomation dependencies. Install with:
+#   .venv/bin/pip install -r requirements.txt
+#
+# Versions are pinned so the project rebuilds identically on another machine
+# (the whole point of checking this file in: .venv/ is gitignored, so this is
+# the only record of what the project needs).
+
+opencv-python==5.0.0.93   # image decoding, resizing, Laplacian edge filter
+numpy==2.5.4              # array maths; OpenCV images are numpy arrays
+
+# Format support beyond JPEG/PNG:
+pillow==13.0.0            # cheap image-header reads (size without decoding)
+pillow_heif==1.8.1        # HEIC/HEIF, the default iPhone photo format
+rawpy==0.28.0             # camera RAW (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW)
