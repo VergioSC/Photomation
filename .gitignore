@@ -1,0 +1,13 @@
+# Python virtual environment
+.venv/
+
+# Photos: never commit image data (keeps the repo small)
+input/
+output/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# macOS Finder metadata
+.DS_Store
