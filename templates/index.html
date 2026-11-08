@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+{% block title %}Photomation — cull a shoot in seconds{% endblock %}
+
+{% block content %}
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Photo culling</span>
+    <h1>Throw away the blurry ones.<br>Keep the sharp ones.</h1>
+    <p class="lead">
+      Photomation scores every frame in your shoot for sharpness, then sorts them
+      into keepers and rejects — so you stop squinting at a few hundred near-identical
+      photos trying to decide which one is actually in focus.
+    </p>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('dashboard') }}">
+        {% if photo_count %}Cull {{ photo_count }} photo{{ 's' if photo_count != 1 }}{% else %}Open the dashboard{% endif %}
+      </a>
+      <a class="btn btn-secondary" href="#how">How it works</a>
+    </div>
+  </div>
+</header>
+
+<section class="section" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>How it decides</h2>
+      <p class="lead">
+        Sharpness is measured as the <span class="label">variance of the Laplacian</span>.
+      </p>
+    </div>
+
+    <div class="wrap-narrow">
+      <div class="callout">
+        <p>
+          The Laplacian is an edge filter: it reacts strongly wherever brightness
+          changes quickly. A sharp photo is full of those fast changes, so its edge
+          responses are spread widely and the variance is high. A blurry photo is
+          smooth, its responses are bunched near zero, and the variance is low.
+          One number per photo, and bigger means sharper.
+        </p>
+      </div>
+    </div>
+
+    <div class="tiles" style="margin-top: var(--s7)">
+      <div class="tile">
+        <div class="tile-icon">1:1</div>
+        <h3>Megapixels don't skew it</h3>
+        <p>
+          Every photo is scaled to 1000px on its long edge before scoring, so a 48MP
+          file and a 12MP file of the same scene get comparable numbers — and one
+          threshold works across your whole library.
+        </p>
+      </div>
+      <div class="tile">
+        <div class="tile-icon">&#8594;</div>
+        <h3>Nothing is ever destroyed</h3>
+        <p>
+          Originals are only read and copied. Nothing in your input folder is moved,
+          renamed or deleted — so a badly chosen threshold costs you nothing but a
+          re-run.
+        </p>
+      </div>
+      <div class="tile">
+        <div class="tile-icon">&#9881;</div>
+        <h3>Tune it live</h3>
+        <p>
+          Scoring happens once. The threshold slider then re-sorts the results
+          instantly, so you can find the cut-off that matches your own eye instead of
+          trusting a default.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Three steps</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3>Add photos</h3>
+        <p>Drop them into the <code>input/</code> folder. JPEG, PNG, HEIC from an iPhone, or camera RAW.</p>
+      </div>
+      <div class="step">
+        <h3>Scan</h3>
+        <p>Every photo is scored once. Results stream in as they're processed, so you see progress immediately.</p>
+      </div>
+      <div class="step">
+        <h3>Drag and apply</h3>
+        <p>Move the threshold until the split looks right, then write the copies into keep and reject folders.</p>
+      </div>
+    </div>
+
+    <div class="format-chips">
+      {% for f in formats %}<span class="chip">{{ f }}</span>{% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap-narrow">
+    <div class="card card-parchment">
+      <h3>One honest caveat</h3>
+      <p class="small" style="margin-top: var(--s3); color: var(--ink-secondary)">
+        This measures edge detail across the whole frame, not whether your subject is
+        in focus. A portrait with heavy background blur, or a minimalist shot with a
+        lot of empty sky, will score low while being perfectly sharp. Check the reject
+        column before you trust it, and expect to tune the threshold per shoot.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap" style="text-align:center">
+    <h2>Ready when you are</h2>
+    <div class="hero-actions">
+      <a class="btn" href="{{ url_for('dashboard') }}">Open the dashboard</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

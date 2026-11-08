@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Photomation{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="{{ url_for('landing') }}">Photomation</a>
+      <div class="nav-links">
+        <a href="{{ url_for('landing') }}" {% if active == 'home' %}class="active"{% endif %}>Overview</a>
+        <a href="{{ url_for('dashboard') }}" {% if active == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  {% block content %}{% endblock %}
+
+  <footer class="footer">
+    <div class="wrap">
+      <p>Photomation — blur-based photo culling. Your photos never leave this machine.</p>
+    </div>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
