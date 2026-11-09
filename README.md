@@ -123,8 +123,15 @@ Vibrance is not a weaker saturation: it measures how colourful each pixel
 already is and pushes the dull ones hardest, so skies and clothing gain
 without skin tones going lurid.
 
-Previews are rendered live from a small cached copy, which is why dragging a
-slider is responsive even though the export is full resolution. A LUT that
+Previews are sized for the screen. CSS pixels are not screen pixels on a
+Retina display, so the browser asks for the stage size multiplied by the device
+pixel ratio; a fixed 480px thumbnail was being blown up about three times and
+looked pixellated. Requested sizes are snapped up to fixed steps, so the cache
+holds a handful of files per photo instead of one per window width.
+
+While a slider is moving the preview renders at 700px for speed, then
+re-renders at full size about a quarter of a second after it stops, so dragging
+stays responsive and the picture you judge is sharp. A LUT that
 cannot be parsed is listed with the reason rather than silently skipped.
 
 ### Tests

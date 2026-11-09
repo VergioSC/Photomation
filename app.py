@@ -104,7 +104,7 @@ def api_thumb(name):
     if ref is None:
         return jsonify({"error": "not found"}), 404
     try:
-        data = store.thumbnail_bytes(ref)
+        data = store.scaled_bytes(ref)
     except cull.LoadError as exc:
         return jsonify({"error": str(exc)}), 422
     return Response(
@@ -211,6 +211,15 @@ def _load_lut_or_400(name):
     return None, (jsonify({"error": f"no such LUT: {name}"}), 404)
 
 
+def _preview_step(asked):
+    """Snap a requested preview width up to the next cached step."""
+    asked = max(config.PREVIEW_MIN, min(config.PREVIEW_MAX, asked))
+    for step in config.PREVIEW_STEPS:
+        if asked <= step:
+            return step
+    return config.PREVIEW_STEPS[-1]
+
+
 def _adjustments_from_args(args):
     """Read slider values off a query string."""
     return edit_module.Adjustments.from_dict({key: args[key] for key in args.keys()})
@@ -244,16 +253,27 @@ def api_preview(name):
     if error is not None:
         return error
 
+    # The browser asks for the size it will actually display, so a Retina
+    # screen gets real pixels instead of a blown-up thumbnail, and a draft
+    # size can be used while a slider is moving.
     try:
-        raw = picker.thumbnail_bytes(ref)
+        asked = int(float(request.args.get("size", config.PREVIEW_SIZE)))
+    except ValueError:
+        asked = config.PREVIEW_SIZE
+    # Rounded up to a fixed step. The browser derives the size from its window
+    # width, so without this every window resize would cache a new file.
+    longest = _preview_step(asked)
+
+    try:
+        raw = picker.scaled_bytes(ref, longest)
     except cull.LoadError as exc:
         return jsonify({"error": str(exc)}), 422
-    thumb = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if thumb is None:
-        return jsonify({"error": "could not decode the thumbnail"}), 422
+    source = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if source is None:
+        return jsonify({"error": "could not decode the preview source"}), 422
 
-    out = edit_module.apply_adjustments(thumb, _adjustments_from_args(request.args), table)
-    ok, buffer = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    out = edit_module.apply_adjustments(source, _adjustments_from_args(request.args), table)
+    ok, buffer = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
         return jsonify({"error": "could not encode preview"}), 500
     return Response(buffer.tobytes(), mimetype="image/jpeg",

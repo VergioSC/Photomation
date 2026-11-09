@@ -42,5 +42,21 @@ DEFAULT_THRESHOLD = float(os.environ.get("PHOTOMATION_THRESHOLD", "100"))
 # them needs real headroom.
 MAX_UPLOAD_BYTES = int(os.environ.get("PHOTOMATION_MAX_UPLOAD_MB", "2048")) * 1024 * 1024
 
-# Longest side of generated thumbnails, in pixels.
+# Longest side of grid and filmstrip thumbnails, in pixels.
 THUMB_SIZE = 480
+
+# Longest side of the editor's preview. It is shown large on a Retina screen,
+# where CSS pixels are doubled, so a 480px thumbnail was being blown up about
+# five times and looked pixellated.
+PREVIEW_SIZE = int(os.environ.get("PHOTOMATION_PREVIEW_PX", "1400"))
+
+# A smaller render used while a slider is moving, swapped for the full-size one
+# once it settles. Keeps dragging responsive without leaving the result soft.
+PREVIEW_DRAFT_SIZE = 700
+
+# Guard rails for the size a browser may ask for.
+PREVIEW_MIN, PREVIEW_MAX = 240, 2400
+
+# Requested sizes are snapped up to one of these, so the cache holds a handful
+# of files per photo rather than one per window width.
+PREVIEW_STEPS = (480, 700, 1000, 1400, 1800, 2400)

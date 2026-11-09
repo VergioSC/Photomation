@@ -87,10 +87,28 @@
 
   /* ---------------- preview ---------------- */
 
-  function query() {
+  const DRAFT_PX = 700;
+
+  /* Ask for the size the stage will really show. CSS pixels are not screen
+     pixels on a Retina display, so without devicePixelRatio the preview is
+     upscaled and looks pixellated. */
+  function fullPreviewPx() {
+    const stage = el("stage");
+    let boxW = Math.max(stage ? stage.clientWidth : 800, 480);
+    if (ui.compare && ui.compare.checked) boxW /= 2;
+    // object-fit: contain fits the photo inside the box, so its long edge can
+    // reach whichever box side is larger. A portrait shot is limited by height,
+    // so asking by width alone under-requests and the result is soft.
+    const boxH = window.innerHeight * 0.74;      // matches .stage img max-height
+    const css = Math.max(boxW, boxH);
+    return Math.min(2400, Math.round(css * (window.devicePixelRatio || 1)));
+  }
+
+  function query(sizePx) {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(state.values)) params.set(k, String(v));
     params.set("lut", ui.select.value || "none");
+    params.set("size", String(sizePx));
     return params.toString();
   }
 
@@ -98,33 +116,37 @@
      events, and without this the browser queues a render for every one. */
   let pending = false;
   let queued = false;
+  let settleTimer = null;
 
+  /* While a slider moves, render small and fast. When it stops, render at the
+     real size so the picture the user judges is sharp. */
   function schedulePreview() {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => renderPreview(fullPreviewPx()), 260);
     if (pending) { queued = true; return; }
-    renderPreview();
+    renderPreview(DRAFT_PX);
   }
 
-  function renderPreview() {
+  function renderPreview(sizePx) {
     if (!state.current) return;
     pending = true;
-    const url = `/api/preview/${encodeURIComponent(state.current)}?${query()}`;
     const probe = new Image();
     probe.onload = probe.onerror = () => {
       ui.after.src = probe.src;
       pending = false;
-      if (queued) { queued = false; renderPreview(); }
+      if (queued) { queued = false; renderPreview(DRAFT_PX); }
     };
-    probe.src = url;
+    probe.src = `/api/preview/${encodeURIComponent(state.current)}?${query(sizePx)}`;
   }
 
   function selectPhoto(name) {
     state.current = name;
     ui.currentName.textContent = name;
-    ui.before.src = `/api/thumb/${encodeURIComponent(name)}?from=keep`;
+    ui.before.src = `/api/preview/${encodeURIComponent(name)}?size=${fullPreviewPx()}&lut=none`;
     for (const t of ui.filmstrip.children) {
       t.classList.toggle("active", t.dataset.name === name);
     }
-    renderPreview();
+    renderPreview(fullPreviewPx());
   }
 
   function buildFilmstrip() {
@@ -237,6 +259,7 @@
     ui.beforeWrap.classList.toggle("hidden", !ui.compare.checked);
     el("after-tag").classList.toggle("hidden", !ui.compare.checked);
     el("stage").classList.toggle("split", ui.compare.checked);
+    renderPreview(fullPreviewPx());
   });
 
   buildSliders();

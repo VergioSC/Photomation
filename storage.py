@@ -7,7 +7,7 @@ the Flask app never touches a filesystem path directly.
 
     list_photos()          -> [PhotoRef]
     load_image(ref)        -> BGR numpy array, for scoring
-    thumbnail_bytes(ref)   -> JPEG bytes, cached
+    scaled_bytes(ref, px)  -> JPEG bytes at that size, cached
     copy_to_bucket(ref, b) -> copy the ORIGINAL into output/<bucket>/
 """
 
@@ -81,15 +81,17 @@ class LocalStorage:
         image, label = cull.load_image(ref.path)
         return image, label
 
-    def thumbnail_array(self, ref):
-        """Decode a photo and shrink it to thumbnail size, as a BGR array.
+    def scaled_array(self, ref, longest):
+        """Decode a photo and shrink it so its long edge is `longest` pixels.
 
-        Separate from thumbnail_bytes so the grading preview can colour-grade
-        the small image before it is encoded.
+        Separate from scaled_bytes so the editor can apply adjustments to the
+        small image before it is encoded.
         """
-        image, _ = cull.load_image(ref.path)
+        # Only the full-size decode is worth forcing for big previews; the
+        # reduced decode is still lossless at thumbnail sizes.
+        image, _ = cull.load_image(ref.path, reduced=longest <= config.THUMB_SIZE)
         height, width = image.shape[:2]
-        scale = config.THUMB_SIZE / max(height, width)
+        scale = longest / max(height, width)
         if scale < 1:
             image = cv2.resize(
                 image,
@@ -98,19 +100,21 @@ class LocalStorage:
             )
         return image
 
-    def thumbnail_bytes(self, ref):
-        """Return JPEG bytes for a display thumbnail, generating and caching once.
+    def scaled_bytes(self, ref, longest=None):
+        """JPEG bytes at a given size, generated once and cached per size.
 
         Without this cache the browser would re-decode full-size RAW previews on
         every scroll, which makes the grid unusable.
         """
+        longest = longest or config.THUMB_SIZE
         self.thumb_dir.mkdir(parents=True, exist_ok=True)
-        cached = self.thumb_dir / f"{ref.cache_key}.jpg"
+        cached = self.thumb_dir / f"{ref.cache_key}-{longest}.jpg"
         if cached.exists():
             return cached.read_bytes()
 
-        image = self.thumbnail_array(ref)
-        ok, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        image = self.scaled_array(ref, longest)
+        quality = 82 if longest <= config.THUMB_SIZE else 90
+        ok, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
         if not ok:
             raise cull.LoadError("could not encode thumbnail")
         data = buffer.tobytes()

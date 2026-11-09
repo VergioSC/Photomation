@@ -360,7 +360,7 @@ input[type="number"]:focus { outline: none; border-color: var(--accent); border-
   background: var(--surface-tint); border-radius: var(--r-md); overflow: hidden;
 }
 .stage.split { grid-template-columns: 1fr 1fr; }
-.stage img { width: 100%; display: block; object-fit: contain; max-height: 58vh; background: var(--divider-soft); }
+.stage img { width: 100%; display: block; object-fit: contain; max-height: 74vh; background: var(--divider-soft); }
 .stage-before, .stage-after { position: relative; }
 .stage-bar { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s1) 0; }
 
