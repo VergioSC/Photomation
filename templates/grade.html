@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = 'grade' %}
-{% block title %}Grade — Photomation{% endblock %}
+{% block title %}Edit — Photomation{% endblock %}
 
 {% block content %}
 <main class="dash">
@@ -8,68 +8,96 @@
 
     <div class="dash-head">
       <div>
-        <h1>Grade</h1>
-        <p class="caption mono" style="margin-top: var(--s2)">{{ keep_dir }}</p>
+        <h1>Edit</h1>
+        <p class="caption mono" style="margin-top: var(--s2)">{{ keep_count }} kept photo{{ 's' if keep_count != 1 }}</p>
       </div>
-      <div style="margin-left:auto; display:flex; gap:var(--s3)">
-        <button class="btn btn-secondary btn-small" id="reload">Reload LUTs</button>
-        <button class="btn btn-small" id="export" disabled>Grade &amp; export</button>
+      <div style="margin-left:auto; display:flex; gap:var(--s3); flex-wrap:wrap">
+        <button class="btn btn-secondary btn-small" id="reset">Reset edits</button>
+        <a class="btn btn-secondary btn-small" id="download" href="/api/download/graded">Download zip</a>
+        <button class="btn btn-small" id="export" disabled>Export all</button>
       </div>
     </div>
 
     <section class="panel empty {% if keep_count %}hidden{% endif %}" id="no-keepers">
-      <h3>Nothing to grade yet</h3>
-      <p>Grading works on the photos you kept. Cull a shoot first.</p>
+      <h3>Nothing to edit yet</h3>
+      <p>Editing works on the photos you kept. Cull a shoot first.</p>
       <a class="btn btn-small" href="{{ url_for('dashboard') }}">Go to the dashboard</a>
     </section>
 
-    <section class="panel empty hidden" id="no-luts">
-      <h3>No LUTs found</h3>
-      <p>Put one or more <code>.cube</code> files in your LUT folder, then press Reload LUTs.</p>
-      <code>{{ luts_dir }}</code>
-    </section>
+    <div id="editor" class="{% if not keep_count %}hidden{% endif %}">
+      <div class="editor-grid">
 
-    <div id="grade-body" class="{% if not keep_count %}hidden{% endif %}">
-      <section class="panel">
-        <div class="control-row">
-          <div style="min-width:200px">
-            <div class="stat-label" style="margin:0 0 var(--s1)">Look</div>
-            <select id="lut-select" class="select" aria-label="Colour LUT"></select>
+        <section class="panel stage-panel">
+          <div class="stage" id="stage">
+            <div class="stage-after">
+              <img id="after" alt="Edited preview">
+              <span class="shot-tag hidden" id="after-tag">Edited</span>
+            </div>
+            <div class="stage-before hidden" id="before-wrap">
+              <img id="before" alt="Original">
+              <span class="shot-tag">Original</span>
+            </div>
           </div>
-          <div>
-            <div class="stat-label" style="margin:0 0 var(--s1)">Cube size</div>
-            <div class="threshold-value mono" id="lut-size">—</div>
+          <div class="stage-bar">
+            <span class="caption mono" id="current-name">—</span>
+            <label class="toggle" style="margin-left:auto">
+              <input type="checkbox" id="compare">
+              <span>Compare</span>
+            </label>
           </div>
-          <label class="toggle">
-            <input type="checkbox" id="show-before" checked>
-            <span>Show before</span>
-          </label>
-        </div>
+          <div class="filmstrip" id="filmstrip"></div>
+        </section>
 
-        <div class="skipped-list hidden" id="bad-luts-panel">
-          <div class="stat-label" style="margin-bottom: var(--s2)">Unreadable</div>
-          <div id="bad-luts"></div>
-        </div>
-
-        <div class="hidden" id="export-progress" style="margin-top: var(--s5)">
-          <div style="display:flex; gap:var(--s4); margin-bottom:var(--s3)">
-            <span class="label" id="export-label">Grading…</span>
-            <span class="caption mono" id="export-count" style="margin-left:auto"></span>
+        <section class="panel controls">
+          <div class="control-group">
+            <div class="group-title">Look</div>
+            <label class="field">
+              <span class="field-label">LUT</span>
+              <select id="lut-select" class="select"></select>
+            </label>
+            <div class="slider-row" id="row-lut_strength" data-key="lut_strength"
+                 data-min="0" data-max="100" data-step="1" data-default="100">
+            </div>
+            <div class="skipped-list hidden" id="bad-luts-panel">
+              <div class="stat-label" style="margin-bottom: var(--s2)">Unreadable</div>
+              <div id="bad-luts"></div>
+            </div>
           </div>
-          <div class="progress-track"><div class="progress-fill" id="export-fill"></div></div>
-        </div>
-      </section>
 
-      <section class="panel">
-        <div class="column-head">
-          <h3>Preview</h3>
-          <span class="column-count mono" id="preview-count">{{ keep_count }}</span>
+          <div class="control-group">
+            <div class="group-title">Light</div>
+            <div class="slider-row" data-key="exposure" data-min="-3" data-max="3" data-step="0.05" data-default="0" data-unit=" EV"></div>
+            <div class="slider-row" data-key="contrast" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="highlights" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="shadows" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+          </div>
+
+          <div class="control-group">
+            <div class="group-title">Colour</div>
+            <div class="slider-row" data-key="temperature" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="tint" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="vibrance" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="saturation" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+          </div>
+
+          <div class="control-group">
+            <div class="group-title">Detail</div>
+            <div class="slider-row" data-key="sharpen" data-min="0" data-max="100" data-step="1" data-default="0"></div>
+          </div>
+
+          <p class="caption">
+            Double-click any slider to reset it. Edits apply to every kept photo
+            on export.
+          </p>
+        </section>
+      </div>
+
+      <section class="panel hidden" id="export-progress">
+        <div style="display:flex; gap:var(--s4); margin-bottom:var(--s3)">
+          <span class="label" id="export-label">Exporting…</span>
+          <span class="caption mono" id="export-count" style="margin-left:auto"></span>
         </div>
-        <p class="caption" style="margin-bottom: var(--s4)">
-          Previews are small copies. Export writes full-resolution JPEGs to
-          <span class="mono">output/graded/</span>.
-        </p>
-        <div class="pairs" id="pairs"></div>
+        <div class="progress-track"><div class="progress-fill" id="export-fill"></div></div>
       </section>
     </div>
   </div>
@@ -79,6 +107,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>window.PHOTOMATION = { keepCount: {{ keep_count }} };</script>
+<script>window.PHOTOMATION = { keepCount: {{ keep_count }}, lutsDir: {{ luts_dir | tojson }} };</script>
 <script src="{{ url_for('static', filename='js/grade.js') }}"></script>
 {% endblock %}

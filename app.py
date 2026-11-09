@@ -12,16 +12,25 @@ instead of needing a rescan. Nothing is written to output/ until you press Apply
 
 import hashlib
 import json
+import os
+import pathlib
+import tempfile
+import zipfile
 
 import cv2
-from flask import Flask, Response, jsonify, render_template, request
+import numpy as np
+from flask import Flask, Response, jsonify, render_template, request, send_file
+from werkzeug.utils import secure_filename
 
 import config
 import cull
+import edit as edit_module
 import lut as lut_module
 from storage import LocalStorage
 
 app = Flask(__name__)
+# RAW files run to 50-100 MB each, so a batch upload needs real headroom.
+app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_BYTES
 store = LocalStorage()
 # The grading step works on what survived culling, so it lists output/keep.
 keep_store = LocalStorage(input_dir=config.KEEP_DIR)
@@ -202,57 +211,62 @@ def _load_lut_or_400(name):
     return None, (jsonify({"error": f"no such LUT: {name}"}), 404)
 
 
+def _adjustments_from_args(args):
+    """Read slider values off a query string."""
+    return edit_module.Adjustments.from_dict({key: args[key] for key in args.keys()})
+
+
+def _lut_from_args(args):
+    """Resolve the optional LUT. Returns (table, error_response)."""
+    name = args.get("lut", "")
+    if not name or name == "none":
+        return None, None
+    try:
+        return _load_lut_or_400(name)
+    except lut_module.CubeError as exc:
+        return None, (jsonify({"error": str(exc)}), 422)
+
+
 @app.get("/api/preview/<path:name>")
 def api_preview(name):
-    """A graded thumbnail, for the side-by-side preview."""
-    ref = keep_store.resolve(name)
+    """A small edited preview, rendered live for the current slider values.
+
+    The adjusted result is deliberately NOT cached: the sliders change it on
+    every drag, so a cache would only fill the disk. The decoded thumbnail
+    underneath it IS cached, and that is the slow part.
+    """
+    picker = keep_store if request.args.get("from", "keep") == "keep" else store
+    ref = picker.resolve(name)
     if ref is None:
         return jsonify({"error": "not found"}), 404
 
-    lut_name = request.args.get("lut", "")
-    try:
-        table, error = _load_lut_or_400(lut_name)
-    except lut_module.CubeError as exc:
-        return jsonify({"error": str(exc)}), 422
+    table, error = _lut_from_args(request.args)
     if error is not None:
         return error
 
-    cached = config.THUMB_DIR / f"{ref.cache_key}-{_lut_key(lut_name)}.jpg"
-    if cached.exists():
-        data = cached.read_bytes()
-    else:
-        try:
-            thumb = keep_store.thumbnail_array(ref)
-        except cull.LoadError as exc:
-            return jsonify({"error": str(exc)}), 422
-        graded = lut_module.apply_lut(thumb, table)
-        ok, buffer = cv2.imencode(".jpg", graded, [cv2.IMWRITE_JPEG_QUALITY, 82])
-        if not ok:
-            return jsonify({"error": "could not encode preview"}), 500
-        data = buffer.tobytes()
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        cached.write_bytes(data)
-    return Response(data, mimetype="image/jpeg",
-                    headers={"Cache-Control": "public, max-age=86400"})
+    try:
+        raw = picker.thumbnail_bytes(ref)
+    except cull.LoadError as exc:
+        return jsonify({"error": str(exc)}), 422
+    thumb = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if thumb is None:
+        return jsonify({"error": "could not decode the thumbnail"}), 422
 
-
-def _lut_key(name):
-    """Part of the preview cache name: changes when the LUT file changes."""
-    path = config.LUTS_DIR / name
-    stamp = path.stat().st_mtime if path.is_file() else 0
-    return hashlib.sha256(f"{name}|{stamp}".encode()).hexdigest()[:12]
+    out = edit_module.apply_adjustments(thumb, _adjustments_from_args(request.args), table)
+    ok, buffer = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    if not ok:
+        return jsonify({"error": "could not encode preview"}), 500
+    return Response(buffer.tobytes(), mimetype="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/grade")
 def api_grade():
-    """Grade every kept photo at full resolution, streaming progress."""
-    lut_name = request.args.get("lut", "")
-    try:
-        table, error = _load_lut_or_400(lut_name)
-    except lut_module.CubeError as exc:
-        return jsonify({"error": str(exc)}), 422
+    """Render every kept photo at full resolution, streaming progress."""
+    table, error = _lut_from_args(request.args)
     if error is not None:
         return error
+    adj = _adjustments_from_args(request.args)
 
     refs = keep_store.list_photos()
     graded_dir = config.OUTPUT_DIR / "graded"
@@ -262,12 +276,12 @@ def api_grade():
         graded_dir.mkdir(parents=True, exist_ok=True)
         for index, ref in enumerate(refs, start=1):
             try:
-                # Full resolution: a graded photo is the deliverable.
+                # Full resolution: an exported photo is the deliverable.
                 image, _ = cull.load_image(ref.path, reduced=False)
-                out = lut_module.apply_lut(image, table)
+                out = edit_module.apply_adjustments(image, adj, table)
                 target = graded_dir / f"{ref.path.stem}.jpg"
                 if not cv2.imwrite(str(target), out, [cv2.IMWRITE_JPEG_QUALITY, 95]):
-                    raise cull.LoadError("could not write the graded file")
+                    raise cull.LoadError("could not write the edited file")
                 payload = {"type": "photo", "index": index, "name": ref.name,
                            "out": target.name}
             except (cull.LoadError, lut_module.CubeError) as exc:
@@ -278,6 +292,134 @@ def api_grade():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/upload")
+def api_upload():
+    """Take photos from the browser and put them in the input folder.
+
+    Filenames from a browser are untrusted, so they go through
+    secure_filename and the extension is checked against the formats we can
+    actually read. An existing name is never overwritten; a counter is added.
+    """
+    uploaded = request.files.getlist("photos")
+    if not uploaded:
+        return jsonify({"error": "no files were sent"}), 400
+
+    config.INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    saved, rejected = [], []
+    for item in uploaded:
+        safe = secure_filename(item.filename or "")
+        if not safe:
+            rejected.append({"name": item.filename or "(unnamed)", "reason": "unusable filename"})
+            continue
+        if pathlib.Path(safe).suffix.lower() not in cull.EXTENSIONS:
+            rejected.append({"name": safe, "reason": "not a supported photo format"})
+            continue
+
+        target = config.INPUT_DIR / safe
+        stem, suffix = pathlib.Path(safe).stem, pathlib.Path(safe).suffix
+        counter = 1
+        while target.exists():
+            target = config.INPUT_DIR / f"{stem}-{counter}{suffix}"
+            counter += 1
+        item.save(target)
+        saved.append(target.name)
+
+    return jsonify({"saved": saved, "rejected": rejected,
+                    "total": len(store.list_photos())})
+
+
+@app.post("/api/remove/<path:name>")
+def api_remove(name):
+    """Take a photo out of the input folder.
+
+    It is MOVED to output/.trash rather than deleted, so a misclick cannot
+    lose a picture.
+    """
+    ref = store.resolve(name)
+    if ref is None:
+        return jsonify({"error": "not found"}), 404
+    trash = config.OUTPUT_DIR / ".trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    target = trash / ref.name
+    counter = 1
+    while target.exists():
+        target = trash / f"{target.stem}-{counter}{target.suffix}"
+        counter += 1
+    ref.path.rename(target)
+    return jsonify({"moved_to": str(target), "remaining": len(store.list_photos())})
+
+
+BUCKETS = {"keep": None, "reject": None, "graded": None}
+
+
+def _bucket_dir(bucket):
+    if bucket not in BUCKETS:
+        return None
+    return config.OUTPUT_DIR / bucket
+
+
+@app.get("/api/files/<bucket>")
+def api_files(bucket):
+    """What is in one output folder, for the download list."""
+    folder = _bucket_dir(bucket)
+    if folder is None:
+        return jsonify({"error": "unknown folder"}), 404
+    if not folder.is_dir():
+        return jsonify({"bucket": bucket, "files": []})
+    files = [
+        {"name": p.name, "size_bytes": p.stat().st_size}
+        for p in sorted(folder.iterdir())
+        if p.is_file() and p.suffix.lower() in cull.EXTENSIONS
+    ]
+    return jsonify({"bucket": bucket, "files": files})
+
+
+@app.get("/api/file/<bucket>/<path:name>")
+def api_file(bucket, name):
+    """Download one finished photo."""
+    folder = _bucket_dir(bucket)
+    if folder is None:
+        return jsonify({"error": "unknown folder"}), 404
+    # Matched against the listing, never joined, so the name cannot escape.
+    for path in folder.iterdir() if folder.is_dir() else []:
+        if path.is_file() and path.name == name:
+            return send_file(path, as_attachment=True, download_name=name)
+    return jsonify({"error": "not found"}), 404
+
+
+@app.get("/api/download/<bucket>")
+def api_download(bucket):
+    """Download a whole output folder as one zip, so no Finder digging."""
+    folder = _bucket_dir(bucket)
+    if folder is None:
+        return jsonify({"error": "unknown folder"}), 404
+    photos = [p for p in sorted(folder.iterdir())
+              if p.is_file() and p.suffix.lower() in cull.EXTENSIONS] if folder.is_dir() else []
+    if not photos:
+        return jsonify({"error": f"nothing in {bucket} yet"}), 404
+
+    # Written to a temporary file rather than held in memory: a shoot of
+    # full-size JPEGs is far too big to build as one bytes object.
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    tmp.close()
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_STORED) as archive:
+        for path in photos:
+            archive.write(path, arcname=path.name)
+
+    response = send_file(tmp.name, as_attachment=True,
+                         download_name=f"photomation-{bucket}.zip",
+                         mimetype="application/zip")
+
+    @response.call_on_close
+    def _cleanup():
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+    return response
 
 
 @app.get("/api/health")

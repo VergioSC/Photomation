@@ -38,5 +38,9 @@ PORT = int(os.environ.get("PHOTOMATION_PORT", "5000"))
 
 DEFAULT_THRESHOLD = float(os.environ.get("PHOTOMATION_THRESHOLD", "100"))
 
+# Biggest single upload request. RAW files are 50-100 MB each, so a batch of
+# them needs real headroom.
+MAX_UPLOAD_BYTES = int(os.environ.get("PHOTOMATION_MAX_UPLOAD_MB", "2048")) * 1024 * 1024
+
 # Longest side of generated thumbnails, in pixels.
 THUMB_SIZE = 480

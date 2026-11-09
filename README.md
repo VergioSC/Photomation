@@ -50,6 +50,11 @@ sends the scores to the browser; the threshold slider re-sorts them client-side,
 so tuning is instant rather than needing a rescan. Nothing is written to
 `output/` until you press **Apply & copy**.
 
+**Add photos by dragging them onto the page** (or pressing Choose photos).
+They are copied into the input folder; your originals are not moved. Finished
+photos come back out through **Download zip**, so neither end of the job needs
+a file manager.
+
 **Click any photo to overrule the threshold.** Clicking cycles it between
 following the slider, forced keep, and forced reject, and a badge shows which.
 This matters because the score measures the whole frame: a sharp photo of an
@@ -89,26 +94,52 @@ Two limits worth knowing. Graded copies are written as JPEG and **do not carry
 EXIF** across. Grading a RAW file grades the camera's embedded preview, not the
 sensor data.
 
-### Grading in the dashboard
+### The editor
 
-The **Grade** page lists every `.cube` in `luts/`, previews the selected one
-side by side against the original, and writes full-resolution copies with
-**Grade & export**. A LUT that cannot be parsed is listed with the reason
-rather than silently skipped.
+The **Edit** page is a photo editor, not just a LUT applier. Pick a photo from
+the filmstrip, move the sliders, and the preview updates live:
 
-Previews are small graded copies and are cached, so switching looks is quick.
-The cache key includes the LUT's modification time, so editing a `.cube` and
-reloading shows the new look.
+| Group | Controls |
+|---|---|
+| Look | LUT, and how strongly to mix it in |
+| Light | Exposure (EV), contrast, highlights, shadows |
+| Colour | Temperature, tint, vibrance, saturation |
+| Detail | Sharpen |
+
+Double-click a slider to reset just that one; **Reset edits** clears them all.
+Tick **Compare** for a side-by-side against the original. **Export all** applies
+the same edit to every kept photo at full resolution, then **Download zip**
+gives you the lot.
+
+Two things are done properly rather than quickly. Exposure and white balance
+are applied in *linear light*: a JPEG stores sRGB values, which are bent so
+dark tones get more of the range, and doubling the stored number does not
+double the light. Those two controls undo the bend, do their work, and reapply
+it, so `+1 EV` really is one stop. Contrast, saturation and LUTs are judged by
+eye on the final picture, so they are applied to the display values, which is
+where they are designed to work.
+
+Vibrance is not a weaker saturation: it measures how colourful each pixel
+already is and pushes the dull ones hardest, so skies and clothing gain
+without skin tones going lurid.
+
+Previews are rendered live from a small cached copy, which is why dragging a
+slider is responsive even though the export is full resolution. A LUT that
+cannot be parsed is listed with the reason rather than silently skipped.
 
 ### Tests
 
 ```bash
 .venv/bin/python tests/test_lut.py
+.venv/bin/python tests/test_edit.py
 ```
 
 Plain asserts, no test framework. Covers the `.cube` parser, an identity LUT
 that must change nothing, a check that red and blue are not swapped between
-OpenCV's BGR and the file's RGB, and the URL traversal guard.
+OpenCV's BGR and the file's RGB, and the URL traversal guard. The editor tests
+check that one stop of exposure doubles the light, that vibrance spares
+already-saturated colour, that shadows and highlights only move their own end
+of the range, and that LUT strength blends.
 
 ### The command line
 
@@ -177,6 +208,7 @@ abort the run.
 ```
 cull.py            scoring + CLI culling
 lut.py             .cube parser and trilinear interpolation
+edit.py            exposure, white balance, tone, colour, sharpening
 grade.py           CLI colour grading
 tests/             runnable asserts
 app.py             Flask routes: landing page, dashboard, JSON/SSE API
@@ -235,4 +267,6 @@ it for debugging.
 - [x] Web dashboard with live threshold tuning and per-photo overrides
 - [x] LUT (`.cube`) colour grading with trilinear interpolation
 - [x] Grading in the dashboard
+- [x] Upload and download in the browser
+- [x] Exposure, white balance, tone and colour controls
 - [ ] Deployment (Dockerfile exists, never built)

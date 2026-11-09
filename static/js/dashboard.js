@@ -388,6 +388,79 @@
 
   /* ---------------- boot ---------------- */
 
+  /* ---------------- uploading ---------------- */
+
+  const dropzone = el("dropzone");
+  const fileInput = el("file-input");
+  const uploadTrack = el("upload-track");
+  const uploadFill = el("upload-fill");
+  const uploadList = el("upload-list");
+
+  function upload(files) {
+    const chosen = [...files];
+    if (!chosen.length) return;
+
+    const form = new FormData();
+    for (const f of chosen) form.append("photos", f);
+
+    uploadTrack.classList.remove("hidden");
+    uploadFill.style.width = "0%";
+    uploadList.replaceChildren();
+
+    // XMLHttpRequest rather than fetch: it reports upload progress, and a
+    // shoot of RAW files is big enough that a silent wait looks broken.
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/upload");
+    request.upload.onprogress = (e) => {
+      if (e.lengthComputable) uploadFill.style.width = `${(e.loaded / e.total) * 100}%`;
+    };
+    request.onload = () => {
+      let data = {};
+      try { data = JSON.parse(request.responseText); } catch { /* reported below */ }
+      if (request.status !== 200) {
+        note(data.error || `upload failed (${request.status})`, true);
+        uploadTrack.classList.add("hidden");
+        return;
+      }
+      if (data.saved.length) note(`Added ${data.saved.length} photo${data.saved.length === 1 ? "" : "s"}.`);
+      for (const r of data.rejected || []) note(`${r.name}: ${r.reason}`, true);
+      uploadTrack.classList.add("hidden");
+      if (data.saved.length) scan();
+    };
+    request.onerror = () => {
+      note("upload failed: no reply from the server", true);
+      uploadTrack.classList.add("hidden");
+    };
+    request.send(form);
+  }
+
+  function note(text, bad) {
+    const line = document.createElement("div");
+    line.className = "upload-item" + (bad ? " bad" : "");
+    line.textContent = text;
+    uploadList.append(line);
+  }
+
+  el("pick").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => { upload(fileInput.files); fileInput.value = ""; });
+
+  for (const event of ["dragenter", "dragover"]) {
+    dropzone.addEventListener(event, (e) => {
+      e.preventDefault();
+      dropzone.classList.add("over");
+    });
+  }
+  for (const event of ["dragleave", "drop"]) {
+    dropzone.addEventListener(event, (e) => {
+      e.preventDefault();
+      if (event === "dragleave" && dropzone.contains(e.relatedTarget)) return;
+      dropzone.classList.remove("over");
+    });
+  }
+  dropzone.addEventListener("drop", (e) => {
+    if (e.dataTransfer && e.dataTransfer.files) upload(e.dataTransfer.files);
+  });
+
   setThreshold(state.threshold);
   if (window.PHOTOMATION.photoCount > 0) scan();
 })();
