@@ -1,0 +1,20 @@
+{
+  "name": "Portra Soft",
+  "notes": "Warm, gentle and forgiving on skin. A portrait negative look with lifted shadows.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "astia",
+    "dynamic_range": 200,
+    "highlight": -1,
+    "shadow": -1,
+    "color": 1,
+    "sharpening": 0,
+    "clarity": -1,
+    "grain": "Weak, Small",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 3,
+      "blue": -2
+    }
+  }
+}

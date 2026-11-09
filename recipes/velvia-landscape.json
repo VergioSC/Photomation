@@ -1,0 +1,20 @@
+{
+  "name": "Velvia Landscape",
+  "notes": "Deep blues and greens with hard contrast. Made for skies and foliage; too strong for skin.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "Velvia",
+    "dynamic_range": 200,
+    "highlight": -1,
+    "shadow": 1,
+    "color": 3,
+    "sharpening": 2,
+    "clarity": 2,
+    "grain": "Weak, Small",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 1,
+      "blue": -1
+    }
+  }
+}

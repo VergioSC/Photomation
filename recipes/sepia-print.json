@@ -1,0 +1,14 @@
+{
+  "name": "Sepia Print",
+  "notes": "Toned monochrome with a soft, aged feel.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "sepia",
+    "dynamic_range": 100,
+    "highlight": 0,
+    "shadow": 0,
+    "sharpening": 0,
+    "clarity": -1,
+    "grain": "Weak, Large"
+  }
+}

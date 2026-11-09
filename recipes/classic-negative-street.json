@@ -1,0 +1,21 @@
+{
+  "name": "Classic Negative Street",
+  "notes": "Cyan shadows and warm midtones, the drugstore-film look. Strong character on overcast days.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "classic negative",
+    "dynamic_range": 200,
+    "highlight": 1,
+    "shadow": 2,
+    "color": 2,
+    "sharpening": 1,
+    "clarity": 1,
+    "grain": "Weak, Small",
+    "color_chrome": "Strong",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 1,
+      "blue": -2
+    }
+  }
+}

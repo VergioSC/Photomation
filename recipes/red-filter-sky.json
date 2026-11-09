@@ -1,0 +1,14 @@
+{
+  "name": "Red Filter Sky",
+  "notes": "Black and white with darkened blue skies and bright clouds. Landscape drama.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "acros+r",
+    "dynamic_range": 200,
+    "highlight": 1,
+    "shadow": 2,
+    "sharpening": 2,
+    "clarity": 3,
+    "grain": "Weak, Small"
+  }
+}

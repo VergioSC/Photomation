@@ -401,3 +401,26 @@ input[type="number"]:focus { outline: none; border-color: var(--accent); border-
 .upload-list { margin-top: var(--s4); text-align: left; }
 .upload-item { font-size: 13px; color: var(--ink-secondary); }
 .upload-item.bad { color: var(--warning); }
+
+/* ========================= Recipes, chips, notes ========================= */
+.recipe-list { display: grid; gap: var(--s1); max-height: 260px; overflow-y: auto; }
+.recipe-btn {
+  text-align: left; font: inherit; cursor: pointer;
+  background: var(--surface); border: none; box-shadow: inset 0 0 0 1px var(--hairline);
+  border-radius: var(--r-sm); padding: var(--s2) var(--s3);
+  font-size: 13px; font-weight: var(--w-semibold); color: var(--ink);
+}
+.recipe-btn:hover { background: var(--accent-wash); }
+.recipe-btn.active { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+.recipe-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.chip-btn {
+  font: inherit; font-size: 13px; font-weight: var(--w-semibold); cursor: pointer;
+  padding: 5px 12px; border-radius: var(--r-pill); border: none;
+  box-shadow: inset 0 0 0 1px var(--hairline); background: var(--surface); color: var(--ink-secondary);
+}
+.chip-btn.active { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+
+.auto-notes { margin: 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
+.auto-notes li { font-size: 13px; color: var(--ink-secondary); }

@@ -96,15 +96,92 @@ sensor data.
 
 ### The editor
 
-The **Edit** page is a photo editor, not just a LUT applier. Pick a photo from
-the filmstrip, move the sliders, and the preview updates live:
+The **Edit** page is a photo editor. Pick a photo from the filmstrip, move the
+sliders, and the preview updates live:
 
 | Group | Controls |
 |---|---|
-| Look | LUT, and how strongly to mix it in |
+| Film recipe | One-click presets that fill in every slider below |
+| Crop | Original / 1:1 / 4:5 / 3:2 / 16:9, auto crop, full frame |
+| Look | Film simulation, LUT, and how strongly to mix the LUT in |
 | Light | Exposure (EV), contrast, highlights, shadows |
 | Colour | Temperature, tint, vibrance, saturation |
-| Detail | Sharpen |
+| Detail | Clarity, sharpen, grain |
+| Export | Resize the longest side, or keep the original |
+
+### Film recipes
+
+A recipe is a named preset. Clicking one **fills in the sliders** and then gets
+out of the way, so you can take a look as a starting point and move anything
+you disagree with. Touching any slider deselects the recipe, because the result
+is no longer that recipe.
+
+Twelve are included, spanning slide film, portrait negative, cinema stock and
+four black-and-white looks. They live as JSON in `recipes/`, so adding your own
+means dropping a file in:
+
+```json
+{
+  "name": "My Look",
+  "notes": "What it is for.",
+  "settings": {
+    "film_simulation": "Classic Chrome",
+    "dynamic_range": 200,
+    "highlight": 0, "shadow": 2, "color": 2,
+    "sharpening": 1, "clarity": 3,
+    "grain": "Weak, Small",
+    "color_chrome": "Strong",
+    "white_balance": {"mode": "Daylight", "red": 2, "blue": -5},
+    "exposure_compensation": 0.67
+  }
+}
+```
+
+Those field names follow the way Fujifilm shooters write recipes down, so a
+recipe you find elsewhere can be typed straight in. There is an importer for
+exactly that:
+
+```bash
+.venv/bin/python import_recipe.py "Kodachrome 64"      # paste, then Ctrl-D
+.venv/bin/python import_recipe.py "Velvia" recipe.txt
+```
+
+It reads `Field: value` lines in any order, understands `+2/3` fractions and
+`Daylight, +2 Red & -5 Blue` white-balance shifts, and ignores anything it does
+not recognise.
+
+**These are approximations.** A camera recipe is a set of instructions the
+camera applies to sensor data as it builds a JPEG. Photomation works on a photo
+that has already been through that, so a recipe here reproduces the *character*
+of a look, not the same processing. Two sign conventions are worth knowing: a
+camera's `Shadow +2` makes shadows darker, while the Shadows slider here lifts
+them, so the sign is flipped on import; `Highlight` is not flipped.
+
+The film simulations themselves are approximations too, each built from a
+channel mixer, a tone curve and a saturation setting, with the monochrome ones
+using their own channel weights (which is what gives different black-and-white
+films their different skies and skin tones).
+
+### Auto adjust
+
+**Auto adjust** analyses the photo and fills in the Light and Colour sliders.
+**Auto crop** also suggests a crop. Both then leave everything adjustable, and
+the panel lists what it did and why, so the numbers are not a black box.
+
+This is image analysis, not a neural network, and nothing leaves your machine:
+
+| Step | How |
+|---|---|
+| White balance | Averages the *near-neutral* pixels only. Plain grey-world assumes a scene averages to grey, which turns a blue sea brown; the pixels that are already close to neutral are the ones whose colour really is the light. |
+| Exposure | Aims the median brightness at a normal midtone, but only moves 60% of the way. A dusk photo is meant to be dark, and correcting it fully flattens the mood out of it. |
+| Contrast | Measures how much of the tonal range the photo actually uses and stretches it only if it is sitting in a narrow band. |
+| Shadows / highlights | Measures how much is clipped at each end and recovers only that much. |
+| Crop | Finds the busiest part of the frame by edge density, frames it on a rule-of-thirds line, and keeps 85% of the picture — a tightening, not a recomposition. |
+
+There is no face detection: OpenCV 5 removed the Haar classifier API, and its
+replacement needs a model file downloaded into the project. Edge density finds
+portrait subjects well enough, because eyes, hair and clothing carry far more
+detail than a backdrop.
 
 Double-click a slider to reset just that one; **Reset edits** clears them all.
 Tick **Compare** for a side-by-side against the original. **Export all** applies
@@ -139,6 +216,7 @@ cannot be parsed is listed with the reason rather than silently skipped.
 ```bash
 .venv/bin/python tests/test_lut.py
 .venv/bin/python tests/test_edit.py
+.venv/bin/python tests/test_recipes.py
 ```
 
 Plain asserts, no test framework. Covers the `.cube` parser, an identity LUT
@@ -215,7 +293,11 @@ abort the run.
 ```
 cull.py            scoring + CLI culling
 lut.py             .cube parser and trilinear interpolation
-edit.py            exposure, white balance, tone, colour, sharpening
+edit.py            exposure, white balance, tone, colour, film looks, grain, crop
+auto.py            automatic analysis: white balance, exposure, tone, crop
+recipes.py         film recipe presets and the recipe importer
+import_recipe.py   CLI: turn a written-out recipe into a preset
+recipes/           preset JSON files
 grade.py           CLI colour grading
 tests/             runnable asserts
 app.py             Flask routes: landing page, dashboard, JSON/SSE API
@@ -276,4 +358,6 @@ it for debugging.
 - [x] Grading in the dashboard
 - [x] Upload and download in the browser
 - [x] Exposure, white balance, tone and colour controls
+- [x] Film recipes, film simulations, grain and clarity
+- [x] Automatic adjustment and crop suggestion
 - [ ] Deployment (Dockerfile exists, never built)

@@ -12,6 +12,7 @@
         <p class="caption mono" style="margin-top: var(--s2)">{{ keep_count }} kept photo{{ 's' if keep_count != 1 }}</p>
       </div>
       <div style="margin-left:auto; display:flex; gap:var(--s3); flex-wrap:wrap">
+        <button class="btn btn-secondary btn-small" id="auto">Auto adjust</button>
         <button class="btn btn-secondary btn-small" id="reset">Reset edits</button>
         <a class="btn btn-secondary btn-small" id="download" href="/api/download/graded">Download zip</a>
         <button class="btn btn-small" id="export" disabled>Export all</button>
@@ -50,7 +51,36 @@
 
         <section class="panel controls">
           <div class="control-group">
+            <div class="group-title">Film recipe</div>
+            <div class="recipe-list" id="recipe-list"></div>
+            <p class="caption" id="recipe-note"></p>
+            <div class="skipped-list hidden" id="bad-recipes-panel">
+              <div class="stat-label" style="margin-bottom: var(--s2)">Unreadable</div>
+              <div id="bad-recipes"></div>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="group-title">Crop</div>
+            <div class="chip-row" id="aspect-row">
+              <button type="button" class="chip-btn active" data-aspect="">Original</button>
+              <button type="button" class="chip-btn" data-aspect="1">1:1</button>
+              <button type="button" class="chip-btn" data-aspect="0.8">4:5</button>
+              <button type="button" class="chip-btn" data-aspect="1.5">3:2</button>
+              <button type="button" class="chip-btn" data-aspect="1.7778">16:9</button>
+            </div>
+            <div style="display:flex; gap:var(--s2)">
+              <button class="btn btn-secondary btn-small" id="auto-crop" style="flex:1">Auto crop</button>
+              <button class="btn btn-secondary btn-small" id="clear-crop" style="flex:1">Full frame</button>
+            </div>
+          </div>
+
+          <div class="control-group">
             <div class="group-title">Look</div>
+            <label class="field">
+              <span class="field-label">Film</span>
+              <select id="film-select" class="select"></select>
+            </label>
             <label class="field">
               <span class="field-label">LUT</span>
               <select id="lut-select" class="select"></select>
@@ -82,7 +112,28 @@
 
           <div class="control-group">
             <div class="group-title">Detail</div>
-            <div class="slider-row" data-key="sharpen" data-min="0" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="sharpen" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="grain" data-min="0" data-max="100" data-step="1" data-default="0"></div>
+          </div>
+
+          <div class="control-group">
+            <div class="group-title">Export</div>
+            <label class="field">
+              <span class="field-label">Longest side</span>
+              <select id="resize-select" class="select">
+                <option value="0">Original size</option>
+                <option value="3000">3000 px</option>
+                <option value="2048">2048 px</option>
+                <option value="1600">1600 px</option>
+                <option value="1080">1080 px</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="control-group hidden" id="auto-notes-group">
+            <div class="group-title">What auto did</div>
+            <ul class="auto-notes" id="auto-notes"></ul>
           </div>
 
           <p class="caption">

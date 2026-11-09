@@ -1,0 +1,21 @@
+{
+  "name": "Kodachrome Slide",
+  "notes": "Muted reds, clean whites, crisp midtones. A daylight slide-film look for street and travel.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "Classic Chrome",
+    "dynamic_range": 200,
+    "highlight": 1,
+    "shadow": 1,
+    "color": 2,
+    "sharpening": 1,
+    "clarity": 2,
+    "grain": "Weak, Small",
+    "color_chrome": "Strong",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 2,
+      "blue": -4
+    }
+  }
+}

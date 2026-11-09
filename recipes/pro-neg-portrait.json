@@ -1,0 +1,20 @@
+{
+  "name": "Pro Neg Portrait",
+  "notes": "Flat, neutral and studio-like. The most honest skin rendering here.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "pro neg std",
+    "dynamic_range": 200,
+    "highlight": 0,
+    "shadow": 0,
+    "color": 0,
+    "sharpening": 0,
+    "clarity": 0,
+    "grain": "Off",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 1,
+      "blue": 0
+    }
+  }
+}

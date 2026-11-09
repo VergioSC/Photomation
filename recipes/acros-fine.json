@@ -1,0 +1,14 @@
+{
+  "name": "Acros Fine",
+  "notes": "Smooth black and white with deep tones and little grain. Good for architecture.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "acros",
+    "dynamic_range": 200,
+    "highlight": 1,
+    "shadow": 1,
+    "sharpening": 1,
+    "clarity": 1,
+    "grain": "Weak, Small"
+  }
+}

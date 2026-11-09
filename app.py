@@ -10,6 +10,7 @@ threshold slider then re-buckets those scores client-side, so tuning is instant
 instead of needing a rescan. Nothing is written to output/ until you press Apply.
 """
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -24,8 +25,10 @@ from werkzeug.utils import secure_filename
 
 import config
 import cull
+import auto as auto_module
 import edit as edit_module
 import lut as lut_module
+import recipes as recipes_module
 from storage import LocalStorage
 
 app = Flask(__name__)
@@ -220,6 +223,18 @@ def _preview_step(asked):
     return config.PREVIEW_STEPS[-1]
 
 
+def _crop_from_args(args):
+    """Read a crop rectangle off a query string, or None."""
+    try:
+        rect = tuple(float(args[k]) for k in ("crop_x", "crop_y", "crop_w", "crop_h"))
+    except (KeyError, ValueError):
+        return None
+    x, y, w, h = rect
+    if w <= 0 or h <= 0 or w > 1 or h > 1:
+        return None
+    return (max(0.0, min(1.0, x)), max(0.0, min(1.0, y)), w, h)
+
+
 def _adjustments_from_args(args):
     """Read slider values off a query string."""
     return edit_module.Adjustments.from_dict({key: args[key] for key in args.keys()})
@@ -272,6 +287,7 @@ def api_preview(name):
     if source is None:
         return jsonify({"error": "could not decode the preview source"}), 422
 
+    source = edit_module.crop_image(source, _crop_from_args(request.args))
     out = edit_module.apply_adjustments(source, _adjustments_from_args(request.args), table)
     ok, buffer = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
@@ -287,8 +303,11 @@ def api_grade():
     if error is not None:
         return error
     adj = _adjustments_from_args(request.args)
-
-    refs = keep_store.list_photos()
+    crop = _crop_from_args(request.args)
+    try:
+        resize_to = int(float(request.args.get("resize", 0)))
+    except ValueError:
+        resize_to = 0
     graded_dir = config.OUTPUT_DIR / "graded"
 
     def generate():
@@ -298,7 +317,14 @@ def api_grade():
             try:
                 # Full resolution: an exported photo is the deliverable.
                 image, _ = cull.load_image(ref.path, reduced=False)
+                image = edit_module.crop_image(image, crop)
                 out = edit_module.apply_adjustments(image, adj, table)
+                if resize_to:
+                    h, w = out.shape[:2]
+                    scale = resize_to / max(h, w)
+                    if scale < 1:
+                        out = cv2.resize(out, (max(1, round(w * scale)), max(1, round(h * scale))),
+                                         interpolation=cv2.INTER_AREA)
                 target = graded_dir / f"{ref.path.stem}.jpg"
                 if not cv2.imwrite(str(target), out, [cv2.IMWRITE_JPEG_QUALITY, 95]):
                     raise cull.LoadError("could not write the edited file")
@@ -312,6 +338,65 @@ def api_grade():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/recipes")
+def api_recipes():
+    """Film presets, each with the slider values it sets."""
+    found, problems = recipes_module.load_all()
+    return jsonify({
+        "recipes": [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "notes": r["notes"],
+                "source": r["source"],
+                "values": dataclasses.asdict(r["adjustments"]),
+            }
+            for r in found
+        ],
+        "problems": problems,
+        "folder": str(recipes_module.RECIPES_DIR),
+    })
+
+
+@app.get("/api/films")
+def api_films():
+    """The film looks a recipe or the user can choose from."""
+    return jsonify({"films": [{"id": k, "label": v} for k, v in edit_module.film_look_names()]})
+
+
+@app.get("/api/auto/<path:name>")
+def api_auto(name):
+    """Analyse one photo and suggest settings. Returns values, not an image."""
+    picker = keep_store if request.args.get("from", "keep") == "keep" else store
+    ref = picker.resolve(name)
+    if ref is None:
+        return jsonify({"error": "not found"}), 404
+
+    want_crop = request.args.get("crop", "0") in ("1", "true", "yes")
+    aspect = None
+    if request.args.get("aspect"):
+        try:
+            aspect = float(request.args["aspect"])
+        except ValueError:
+            aspect = None
+
+    try:
+        # Analysis is statistics, so a medium copy is plenty and much faster.
+        raw = picker.scaled_bytes(ref, 1000)
+    except cull.LoadError as exc:
+        return jsonify({"error": str(exc)}), 422
+    image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return jsonify({"error": "could not decode the photo"}), 422
+
+    adj, rect, notes = auto_module.analyse(image, want_crop=want_crop, aspect=aspect)
+    return jsonify({
+        "values": dataclasses.asdict(adj),
+        "crop": list(rect) if rect else None,
+        "notes": notes,
+    })
 
 
 @app.post("/api/upload")

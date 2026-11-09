@@ -16,16 +16,25 @@
     progress: el("export-progress"), label: el("export-label"),
     count: el("export-count"), fill: el("export-fill"),
     toast: el("toast"),
+    recipeList: el("recipe-list"), recipeNote: el("recipe-note"),
+    badRecipes: el("bad-recipes"), badRecipesPanel: el("bad-recipes-panel"),
+    filmSelect: el("film-select"), resizeSelect: el("resize-select"),
+    auto: el("auto"), autoCrop: el("auto-crop"), clearCrop: el("clear-crop"),
+    autoNotes: el("auto-notes"), autoNotesGroup: el("auto-notes-group"),
   };
 
-  const state = { photos: [], current: null, values: {}, exporting: false };
+  const state = {
+    photos: [], current: null, values: {}, exporting: false,
+    film: "", recipe: null, crop: null, aspect: "",
+  };
 
   /* ---------------- sliders ---------------- */
 
   const LABELS = {
     exposure: "Exposure", contrast: "Contrast", highlights: "Highlights",
     shadows: "Shadows", temperature: "Temperature", tint: "Tint",
-    vibrance: "Vibrance", saturation: "Saturation", sharpen: "Sharpen",
+    vibrance: "Vibrance", saturation: "Saturation",
+    clarity: "Clarity", grain: "Grain", sharpen: "Sharpen",
     lut_strength: "Strength",
   };
 
@@ -61,6 +70,7 @@
       input.addEventListener("input", () => {
         state.values[key] = Number(input.value);
         show();
+        clearRecipeSelection();
         schedulePreview();
       });
       // Double-click resets one slider, which is quicker than dragging back.
@@ -76,12 +86,25 @@
       head.append(label, value);
       row.append(head, input);
       row._reset = () => { input.value = String(def); state.values[key] = def; show(); };
+      row._set = (n) => {
+        const clamped = Math.max(Number(input.min), Math.min(Number(input.max), n));
+        input.value = String(clamped);
+        state.values[key] = clamped;
+        show();
+      };
       show();
     }
   }
 
   function resetAll() {
     for (const row of document.querySelectorAll(".slider-row")) row._reset();
+    state.film = "";
+    state.crop = null;
+    ui.filmSelect.value = "";
+    ui.recipeNote.textContent = "";
+    ui.autoNotesGroup.classList.add("hidden");
+    setAspect("");
+    clearRecipeSelection();
     schedulePreview();
   }
 
@@ -108,7 +131,13 @@
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(state.values)) params.set(k, String(v));
     params.set("lut", ui.select.value || "none");
+    params.set("film", state.film || "");
     params.set("size", String(sizePx));
+    if (state.crop) {
+      const [x, y, w, h] = state.crop;
+      params.set("crop_x", x); params.set("crop_y", y);
+      params.set("crop_w", w); params.set("crop_h", h);
+    }
     return params.toString();
   }
 
@@ -205,6 +234,130 @@
     el("row-lut_strength").classList.toggle("hidden", ui.select.value === "none");
   }
 
+  /* ---------------- recipes and film looks ---------------- */
+
+  async function loadFilms() {
+    const data = await (await fetch("/api/films")).json();
+    ui.filmSelect.replaceChildren();
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = "None";
+    ui.filmSelect.append(none);
+    for (const f of data.films) {
+      const o = document.createElement("option");
+      o.value = f.id; o.textContent = f.label;
+      ui.filmSelect.append(o);
+    }
+  }
+
+  async function loadRecipes() {
+    const data = await (await fetch("/api/recipes")).json();
+    state.recipes = data.recipes;
+    ui.recipeList.replaceChildren();
+    for (const r of data.recipes) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "recipe-btn";
+      b.textContent = r.name;
+      b.title = r.notes || r.name;
+      b.dataset.id = r.id;
+      b.addEventListener("click", () => applyRecipe(r));
+      ui.recipeList.append(b);
+    }
+    ui.badRecipes.replaceChildren();
+    for (const bad of data.problems || []) {
+      const row = document.createElement("div");
+      row.className = "skipped-item";
+      const n = document.createElement("span");
+      n.className = "label"; n.textContent = bad.name;
+      const why = document.createElement("span"); why.textContent = bad.reason;
+      row.append(n, why);
+      ui.badRecipes.append(row);
+    }
+    ui.badRecipesPanel.classList.toggle("hidden", !(data.problems || []).length);
+  }
+
+  /* A recipe only fills the sliders in. Everything stays adjustable after. */
+  function applyRecipe(recipe) {
+    state.recipe = recipe.id;
+    setValues(recipe.values);
+    ui.recipeNote.textContent = recipe.notes || "";
+    for (const b of ui.recipeList.children) {
+      b.classList.toggle("active", b.dataset.id === recipe.id);
+    }
+    schedulePreview();
+  }
+
+  /* Push a set of values into the sliders, film picker and state. */
+  function setValues(values) {
+    for (const row of document.querySelectorAll(".slider-row")) {
+      const key = row.dataset.key;
+      if (!(key in values)) continue;
+      row._set(Number(values[key]));
+    }
+    if ("film" in values) {
+      state.film = values.film || "";
+      ui.filmSelect.value = state.film;
+    }
+  }
+
+  function clearRecipeSelection() {
+    state.recipe = null;
+    for (const b of ui.recipeList.children) b.classList.remove("active");
+  }
+
+  /* ---------------- auto ---------------- */
+
+  async function runAuto(withCrop) {
+    if (!state.current) return;
+    const params = new URLSearchParams({ crop: withCrop ? "1" : "0" });
+    if (withCrop && state.aspect) params.set("aspect", state.aspect);
+    ui.auto.disabled = true;
+    ui.autoCrop.disabled = true;
+    try {
+      const res = await fetch(`/api/auto/${encodeURIComponent(state.current)}?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "auto failed");
+      // Only the tonal values: a film look the user picked is left alone.
+      const v = data.values;
+      setValues({
+        exposure: v.exposure, contrast: v.contrast, highlights: v.highlights,
+        shadows: v.shadows, temperature: v.temperature, tint: v.tint,
+      });
+      if (data.crop) state.crop = data.crop;
+      ui.autoNotes.replaceChildren();
+      for (const note of data.notes) {
+        const li = document.createElement("li");
+        li.textContent = note;
+        ui.autoNotes.append(li);
+      }
+      ui.autoNotesGroup.classList.toggle("hidden", !data.notes.length);
+      schedulePreview();
+      toast("Auto adjusted. Every slider is still yours to change.");
+    } catch (err) {
+      toast(`Auto failed: ${err.message}`);
+    } finally {
+      ui.auto.disabled = false;
+      ui.autoCrop.disabled = false;
+    }
+  }
+
+  /* ---------------- crop ---------------- */
+
+  function setAspect(value) {
+    state.aspect = value;
+    for (const b of ui.aspectRow.children) b.classList.toggle("active", b.dataset.aspect === value);
+    if (!value) { state.crop = null; schedulePreview(); return; }
+    // Centre a crop of the requested shape inside the frame.
+    const img = ui.after;
+    const srcAspect = (img.naturalWidth && img.naturalHeight)
+      ? img.naturalWidth / img.naturalHeight : 1.5;
+    const target = Number(value);
+    let w = 1, h = 1;
+    if (target > srcAspect) { h = srcAspect / target; } else { w = target / srcAspect; }
+    state.crop = [(1 - w) / 2, (1 - h) / 2, w, h];
+    schedulePreview();
+  }
+
   /* ---------------- export ---------------- */
 
   function exportAll() {
@@ -216,7 +369,7 @@
     ui.fill.style.width = "0%";
 
     let total = 0, failed = 0;
-    const source = new EventSource(`/api/grade?${query()}`);
+    const source = new EventSource(`/api/grade?${query(0)}&resize=${ui.resizeSelect.value}`);
     source.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "start") {
@@ -262,7 +415,21 @@
     renderPreview(fullPreviewPx());
   });
 
+  ui.aspectRow = el("aspect-row");
+  for (const b of ui.aspectRow.children) {
+    b.addEventListener("click", () => setAspect(b.dataset.aspect));
+  }
+  ui.filmSelect.addEventListener("change", () => {
+    state.film = ui.filmSelect.value;
+    clearRecipeSelection();
+    schedulePreview();
+  });
+  ui.auto.addEventListener("click", () => runAuto(false));
+  ui.autoCrop.addEventListener("click", () => runAuto(true));
+  ui.clearCrop.addEventListener("click", () => setAspect(""));
+
   buildSliders();
+  Promise.all([loadFilms(), loadRecipes()]).catch(() => {});
   fetch("/api/keepers")
     .then((r) => r.json())
     .then((d) => {

@@ -1,0 +1,20 @@
+{
+  "name": "Nostalgic Warm",
+  "notes": "Amber highlights and heavy midtones. A 1970s print-album feel.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "nostalgic negative",
+    "dynamic_range": 200,
+    "highlight": 0,
+    "shadow": 1,
+    "color": 2,
+    "sharpening": 0,
+    "clarity": 1,
+    "grain": "Weak, Large",
+    "white_balance": {
+      "mode": "Cloudy",
+      "red": 2,
+      "blue": -3
+    }
+  }
+}

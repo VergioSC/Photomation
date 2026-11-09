@@ -1,0 +1,21 @@
+{
+  "name": "Cinestill Night",
+  "notes": "Cool, lifted shadows and soft detail. Built for streetlights and neon after dark.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "eterna",
+    "dynamic_range": 400,
+    "highlight": 0,
+    "shadow": -2,
+    "color": 4,
+    "sharpening": -3,
+    "clarity": -5,
+    "grain": "Strong, Large",
+    "color_chrome": "Strong",
+    "white_balance": {
+      "mode": "Fluorescent 3",
+      "red": -6,
+      "blue": -4
+    }
+  }
+}

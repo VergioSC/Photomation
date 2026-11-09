@@ -1,0 +1,21 @@
+{
+  "name": "Eterna Cinema",
+  "notes": "Flat, desaturated and graded for video. Plenty of room left to push by hand.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "eterna",
+    "dynamic_range": 400,
+    "highlight": 0,
+    "shadow": 0,
+    "color": 1,
+    "sharpening": -1,
+    "clarity": -2,
+    "grain": "Weak, Large",
+    "color_chrome": "Weak",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 0,
+      "blue": 0
+    }
+  }
+}

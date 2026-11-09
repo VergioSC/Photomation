@@ -1,0 +1,19 @@
+{
+  "name": "Tri-X Mono",
+  "notes": "Punchy black and white with real grain. The classic reportage look.",
+  "source": "Photomation preset",
+  "settings": {
+    "film_simulation": "acros",
+    "dynamic_range": 200,
+    "highlight": 2,
+    "shadow": 2,
+    "sharpening": 1,
+    "clarity": 3,
+    "grain": "Strong, Large",
+    "white_balance": {
+      "mode": "Daylight",
+      "red": 0,
+      "blue": 0
+    }
+  }
+}
