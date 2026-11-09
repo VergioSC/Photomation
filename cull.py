@@ -205,10 +205,17 @@ def blur_score_of(image):
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
-def blur_score(path):
-    """Convenience wrapper: load `path` and score it."""
-    image, _ = load_image(path)
-    return blur_score_of(image)
+def clear_previous_output():
+    """Delete photo copies from a previous run.
+
+    Without this, running again at a different threshold leaves the old copy
+    behind, so a photo that switched side sits in BOTH keep/ and reject/.
+    Only photo files are deleted; anything else in those folders is left alone.
+    """
+    for folder in (KEEP_DIR, REJECT_DIR):
+        for path in folder.iterdir():
+            if path.is_file() and path.suffix.lower() in EXTENSIONS:
+                path.unlink()
 
 
 def main():
@@ -227,6 +234,7 @@ def main():
 
     KEEP_DIR.mkdir(parents=True, exist_ok=True)
     REJECT_DIR.mkdir(parents=True, exist_ok=True)
+    clear_previous_output()
 
     print(f"Culling {len(photos)} photo(s) from {INPUT_DIR}/ with threshold {threshold:g}\n")
 

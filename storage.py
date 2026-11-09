@@ -108,6 +108,23 @@ class LocalStorage:
         cached.write_bytes(data)
         return data
 
+    def clear_bucket(self, bucket):
+        """Delete previous copies from output/<bucket>/ before a fresh apply.
+
+        Without this, re-applying at a new threshold leaves the old copy behind
+        and a photo that changed side ends up in BOTH keep/ and reject/.
+        Only photo files are removed, so anything else you keep in there stays.
+        """
+        folder = self.output_dir / bucket
+        if not folder.is_dir():
+            return 0
+        removed = 0
+        for path in folder.iterdir():
+            if path.is_file() and path.suffix.lower() in cull.EXTENSIONS:
+                path.unlink()
+                removed += 1
+        return removed
+
     def copy_to_bucket(self, ref, bucket):
         """Copy the ORIGINAL file into output/<bucket>/. Never moves or deletes."""
         destination = self.output_dir / bucket

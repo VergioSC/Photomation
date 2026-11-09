@@ -43,19 +43,6 @@ def dashboard():
     )
 
 
-@app.get("/api/photos")
-def api_photos():
-    """Cheap listing, so the UI can show a count before any decoding happens."""
-    refs = store.list_photos()
-    return jsonify(
-        {
-            "count": len(refs),
-            "input_dir": str(config.INPUT_DIR),
-            "photos": [{"name": r.name, "size_bytes": r.size_bytes} for r in refs],
-        }
-    )
-
-
 @app.get("/api/scan")
 def api_scan():
     """Stream one scored photo at a time as Server-Sent Events.
@@ -115,41 +102,46 @@ def api_thumb(name):
 
 @app.post("/api/apply")
 def api_apply():
-    """Copy originals into output/keep and output/reject for a given threshold.
+    """Copy originals into output/keep and output/reject.
 
-    This is the only endpoint that writes anything. It copies with copy2 and
-    never moves or deletes, so input/ is untouched whatever happens here.
+    The browser sends the final bucket per photo, not just a threshold, so a
+    manual override on a single photo is honoured here too.
+
+    This is the only endpoint that writes. Originals are copied with copy2 and
+    input/ is never touched. Previous copies in output/ ARE deleted first - see
+    below.
     """
     body = request.get_json(silent=True) or {}
-    try:
-        threshold = float(body.get("threshold", config.DEFAULT_THRESHOLD))
-    except (TypeError, ValueError):
-        return jsonify({"error": "threshold must be a number"}), 400
-    if threshold < 0:
-        return jsonify({"error": "threshold must be >= 0"}), 400
 
-    scores = body.get("scores")
-    if not isinstance(scores, dict) or not scores:
-        return jsonify({"error": "no scores supplied; run a scan first"}), 400
+    buckets = body.get("buckets")
+    if not isinstance(buckets, dict) or not buckets:
+        return jsonify({"error": "no buckets supplied; run a scan first"}), 400
+
+    bad = [n for n, b in buckets.items() if b not in ("keep", "reject")]
+    if bad:
+        return jsonify({"error": f"bucket must be keep or reject: {bad[:3]}"}), 400
+
+    # Wipe both folders first. Re-applying at a different threshold used to
+    # leave the old copy in place, so a photo that changed side appeared in
+    # keep/ AND reject/ at once.
+    store.clear_bucket("keep")
+    store.clear_bucket("reject")
+
+    # One directory listing, not one per photo: resolving each name separately
+    # made this O(n^2) and cost 800ms of stat() calls at 300 photos.
+    by_name = {ref.name: ref for ref in store.list_photos()}
 
     kept, rejected, missing = [], [], []
-    for name, raw_score in scores.items():
-        ref = store.resolve(name)
+    for name, bucket in buckets.items():
+        ref = by_name.get(name)
         if ref is None:
             missing.append(name)
             continue
-        try:
-            score = float(raw_score)
-        except (TypeError, ValueError):
-            missing.append(name)
-            continue
-        bucket = "keep" if score >= threshold else "reject"
         store.copy_to_bucket(ref, bucket)
         (kept if bucket == "keep" else rejected).append(name)
 
     return jsonify(
         {
-            "threshold": threshold,
             "kept": len(kept),
             "rejected": len(rejected),
             "missing": missing,

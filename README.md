@@ -50,6 +50,12 @@ sends the scores to the browser; the threshold slider re-sorts them client-side,
 so tuning is instant rather than needing a rescan. Nothing is written to
 `output/` until you press **Apply & copy**.
 
+**Click any photo to overrule the threshold.** Clicking cycles it between
+following the slider, forced keep, and forced reject, and a badge shows which.
+This matters because the score measures the whole frame: a sharp photo of an
+empty sky scores low, and dragging the threshold to rescue it drags every other
+photo with it.
+
 It also draws a score distribution so you can see where your keepers and rejects
 separate, and put the threshold in the gap. The chart's axis is square-root
 scaled: sharpness scores are heavily right-skewed, and on a linear axis a single
@@ -81,8 +87,9 @@ Summary: 1 kept, 1 rejected, 1 skipped (threshold 100)
 Scores ranged 6.2 to 1660.7 - use these to tune your threshold.
 ```
 
-Copies land in `output/keep/` and `output/reject/`. Re-running is safe: it
-overwrites those copies and leaves `input/` untouched.
+Copies land in `output/keep/` and `output/reject/`. Both folders are emptied of
+photos first, so a photo that changes side cannot end up in both. `input/` is
+never touched.
 
 ## Choosing a threshold
 
@@ -167,5 +174,5 @@ docker run --rm -p 5000:5000 \
 ## Roadmap
 
 - [x] Blur-based culling
-- [x] Web dashboard with live threshold tuning
+- [x] Web dashboard with live threshold tuning and per-photo overrides
 - [ ] LUT (`.cube`) colour grading with trilinear interpolation

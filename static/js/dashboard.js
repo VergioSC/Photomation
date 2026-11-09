@@ -10,7 +10,17 @@
     skipped: [],       // { name, reason }
     threshold: window.PHOTOMATION.defaultThreshold,
     scanning: false,
+    /* Manual decisions, by filename: "keep" or "reject". The whole-frame blur
+       score gets portraits and big empty skies wrong, and moving the threshold
+       to rescue one photo drags every other photo with it. An override pins
+       one photo and ignores the slider for it. */
+    overrides: new Map(),
   };
+
+  /* Where a photo lands: a manual override if there is one, else the slider. */
+  const bucketOf = (photo) =>
+    state.overrides.get(photo.name) ??
+    (photo.score >= state.threshold ? "keep" : "reject");
 
   const el = (id) => document.getElementById(id);
   const ui = {
@@ -47,6 +57,7 @@
     state.photos = [];
     state.skipped = [];
     cardCache.clear();
+    state.overrides.clear();
     ui.apply.disabled = true;
     ui.emptyState.classList.add("hidden");
     ui.scanPanel.classList.remove("hidden");
@@ -140,8 +151,8 @@
   }
 
   function render() {
-    const keep = state.photos.filter((p) => p.score >= state.threshold);
-    const reject = state.photos.filter((p) => p.score < state.threshold);
+    const keep = state.photos.filter((p) => bucketOf(p) === "keep");
+    const reject = state.photos.filter((p) => bucketOf(p) !== "keep");
 
     ui.statKeep.textContent = keep.length;
     ui.statReject.textContent = reject.length;
@@ -169,14 +180,27 @@
      rebuilding them - the browser then never restarts a thumbnail download. */
   const cardCache = new Map();
 
+  /* Clicking a photo cycles: follow the slider -> force keep -> force reject. */
+  function cycleOverride(name) {
+    const current = state.overrides.get(name);
+    if (current === undefined) state.overrides.set(name, "keep");
+    else if (current === "keep") state.overrides.set(name, "reject");
+    else state.overrides.delete(name);
+    render();
+  }
+
   function cardFor(photo) {
     let card = cardCache.get(photo.name);
     if (!card) {
-      card = document.createElement("div");
+      // A button, not a div, so it is reachable by keyboard.
+      card = document.createElement("button");
+      card.type = "button";
       const img = document.createElement("img");
       img.loading = "lazy";
       img.src = `/api/thumb/${encodeURIComponent(photo.name)}`;
       img.alt = photo.name;
+      const badge = document.createElement("span");
+      badge.className = "photo-badge";
       const meta = document.createElement("div");
       meta.className = "photo-meta";
       const score = document.createElement("div");
@@ -184,14 +208,20 @@
       const name = document.createElement("div");
       name.className = "photo-name";
       meta.append(score, name);
-      card.append(img, meta);
+      card.append(img, badge, meta);
+      card.addEventListener("click", () => cycleOverride(photo.name));
       cardCache.set(photo.name, card);
     }
-    const score = card.querySelector(".photo-score");
+    const forced = state.overrides.get(photo.name);
+    card.querySelector(".photo-score").textContent = photo.score.toFixed(1);
     const name = card.querySelector(".photo-name");
-    score.textContent = photo.score.toFixed(1);
     name.textContent = photo.name;
-    name.title = `${photo.name} \u2014 decoded via ${photo.decode}`;
+    const badge = card.querySelector(".photo-badge");
+    badge.textContent = forced === undefined ? "" : forced === "keep" ? "kept by you" : "binned by you";
+    card.classList.toggle("photo-forced", forced !== undefined);
+    card.title = forced === undefined
+      ? `${photo.name} \u2014 decoded via ${photo.decode}. Click to force keep.`
+      : `${photo.name} \u2014 forced to ${forced}. Click to change.`;
     return card;
   }
 
@@ -331,14 +361,14 @@
   async function apply() {
     if (!state.photos.length) return;
     ui.apply.disabled = true;
-    const scores = {};
-    for (const p of state.photos) scores[p.name] = p.score;
+    const buckets = {};
+    for (const p of state.photos) buckets[p.name] = bucketOf(p);
 
     try {
       const response = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threshold: state.threshold, scores }),
+        body: JSON.stringify({ buckets }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "apply failed");
