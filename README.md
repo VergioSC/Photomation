@@ -66,6 +66,39 @@ The server binds to `127.0.0.1` by default, so it is not reachable from your
 network. It reads your local photo folders, so keep it that way unless you have
 a reason not to.
 
+### Colour grading
+
+Put a `.cube` LUT in `luts/`, then:
+
+```bash
+.venv/bin/python grade.py                  # the only .cube in luts/
+.venv/bin/python grade.py luts/warm.cube   # a named one
+.venv/bin/python grade.py warm.cube input  # and a different source folder
+```
+
+Reads from `output/keep/` by default, so you grade what survived culling, and
+writes to `output/graded/`.
+
+A 3D LUT is a cube of colours: split red, green and blue into N steps and the
+file holds the output colour at each of the N&sup3; grid points. A real pixel
+almost never lands on a grid point, so its colour is mixed from the eight points
+around it (trilinear interpolation). `cv2.LUT` only does 1D 256-entry tables, so
+this is done in numpy.
+
+Two limits worth knowing. Graded copies are written as JPEG and **do not carry
+EXIF** across. Grading a RAW file grades the camera's embedded preview, not the
+sensor data.
+
+### Tests
+
+```bash
+.venv/bin/python tests/test_lut.py
+```
+
+Plain asserts, no test framework. Covers the `.cube` parser, an identity LUT
+that must change nothing, a check that red and blue are not swapped between
+OpenCV's BGR and the file's RGB, and the URL traversal guard.
+
 ### The command line
 
 ```bash
@@ -132,6 +165,9 @@ abort the run.
 
 ```
 cull.py            scoring + CLI culling
+lut.py             .cube parser and trilinear interpolation
+grade.py           CLI colour grading
+tests/             runnable asserts
 app.py             Flask routes: landing page, dashboard, JSON/SSE API
 config.py          all paths, from environment variables
 storage.py         photo access behind an interface (swap in S3 later)
@@ -175,4 +211,6 @@ docker run --rm -p 5000:5000 \
 
 - [x] Blur-based culling
 - [x] Web dashboard with live threshold tuning and per-photo overrides
-- [ ] LUT (`.cube`) colour grading with trilinear interpolation
+- [x] LUT (`.cube`) colour grading with trilinear interpolation
+- [ ] Grading in the dashboard (CLI only so far)
+- [ ] Deployment (Dockerfile exists, never built)

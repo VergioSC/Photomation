@@ -123,9 +123,13 @@ def _reduced_decode_flag(path):
     return cv2.IMREAD_COLOR, "full"
 
 
-def _load_simple(path):
-    """Load a JPEG or PNG, decoding at a reduced size where that is lossless for us."""
-    flag, label = _reduced_decode_flag(path)
+def _load_simple(path, reduced=True):
+    """Load a JPEG or PNG, decoding at a reduced size where that is lossless for us.
+
+    reduced=False forces a full-resolution decode. Grading needs that: a graded
+    photo is a deliverable, so it must keep every pixel. Scoring does not.
+    """
+    flag, label = _reduced_decode_flag(path) if reduced else (cv2.IMREAD_COLOR, "full")
     image = cv2.imread(str(path), flag)
     if image is None:
         raise LoadError("could not decode")
@@ -175,14 +179,21 @@ def _load_raw(path):
         raise LoadError(f"RAW decode failed: {exc}") from exc
 
 
-def load_image(path):
-    """Load any supported photo as a BGR array, plus a label for how it was decoded."""
+def load_image(path, reduced=True):
+    """Load any supported photo as a BGR array, plus a label for how it was decoded.
+
+    reduced=True lets JPEG/PNG decode smaller when that cannot change the blur
+    score. Pass reduced=False when the pixels themselves are the output.
+    """
     suffix = path.suffix.lower()
     if suffix in RAW_EXTENSIONS:
+        # shortcut: RAW always comes from the embedded preview, so grading a RAW
+        # grades the camera's JPEG preview, not the sensor data. Switch to
+        # raw.postprocess() here if graded RAW quality ever matters.
         return _load_raw(path)
     if suffix in HEIF_EXTENSIONS:
         return _load_heif(path)
-    return _load_simple(path)
+    return _load_simple(path, reduced=reduced)
 
 
 def blur_score_of(image):
