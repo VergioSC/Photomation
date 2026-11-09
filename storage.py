@@ -81,6 +81,23 @@ class LocalStorage:
         image, label = cull.load_image(ref.path)
         return image, label
 
+    def thumbnail_array(self, ref):
+        """Decode a photo and shrink it to thumbnail size, as a BGR array.
+
+        Separate from thumbnail_bytes so the grading preview can colour-grade
+        the small image before it is encoded.
+        """
+        image, _ = cull.load_image(ref.path)
+        height, width = image.shape[:2]
+        scale = config.THUMB_SIZE / max(height, width)
+        if scale < 1:
+            image = cv2.resize(
+                image,
+                (max(1, round(width * scale)), max(1, round(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        return image
+
     def thumbnail_bytes(self, ref):
         """Return JPEG bytes for a display thumbnail, generating and caching once.
 
@@ -92,15 +109,7 @@ class LocalStorage:
         if cached.exists():
             return cached.read_bytes()
 
-        image, _ = cull.load_image(ref.path)
-        height, width = image.shape[:2]
-        scale = config.THUMB_SIZE / max(height, width)
-        if scale < 1:
-            image = cv2.resize(
-                image,
-                (max(1, round(width * scale)), max(1, round(height * scale))),
-                interpolation=cv2.INTER_AREA,
-            )
+        image = self.thumbnail_array(ref)
         ok, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 82])
         if not ok:
             raise cull.LoadError("could not encode thumbnail")

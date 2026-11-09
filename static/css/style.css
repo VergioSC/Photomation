@@ -320,3 +320,32 @@ input[type="number"]:focus { outline: none; border-color: var(--accent); border-
 }
 
 .hidden { display: none !important; }
+
+/* ============================ Grading ============================ */
+.select {
+  font-family: inherit; font-size: 15px; font-weight: var(--w-semibold);
+  padding: 9px 36px 9px 15px; border-radius: var(--r-pill);
+  border: 1px solid var(--hairline); background: var(--surface); color: var(--ink);
+  appearance: none; cursor: pointer; min-width: 200px;
+  /* Chevron drawn in the one accent, so no icon asset is needed. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%230066cc' stroke-width='2' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 14px center;
+}
+.select:focus { outline: none; border-color: var(--accent); border-width: 2px; }
+
+.toggle { display: inline-flex; align-items: center; gap: var(--s2); font-size: 15px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+
+.pairs { display: grid; gap: var(--s5); grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.pair { margin: 0; display: grid; gap: var(--s2); grid-template-columns: 1fr 1fr; }
+.pair-single { grid-template-columns: 1fr; }
+.pair figcaption { grid-column: 1 / -1; }
+
+.shot { position: relative; border-radius: var(--r-md); overflow: hidden; background: var(--surface-tint); }
+.shot img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: var(--divider-soft); }
+.shot-tag {
+  position: absolute; top: var(--s2); left: var(--s2);
+  font-size: 11px; font-weight: var(--w-semibold);
+  padding: 2px 8px; border-radius: var(--r-pill);
+  background: var(--surface-dark); color: #fff;
+}

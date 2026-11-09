@@ -89,6 +89,17 @@ Two limits worth knowing. Graded copies are written as JPEG and **do not carry
 EXIF** across. Grading a RAW file grades the camera's embedded preview, not the
 sensor data.
 
+### Grading in the dashboard
+
+The **Grade** page lists every `.cube` in `luts/`, previews the selected one
+side by side against the original, and writes full-resolution copies with
+**Grade & export**. A LUT that cannot be parsed is listed with the reason
+rather than silently skipped.
+
+Previews are small graded copies and are cached, so switching looks is quick.
+The cache key includes the LUT's modification time, so editing a `.cube` and
+reloading shows the new look.
+
 ### Tests
 
 ```bash
@@ -171,7 +182,7 @@ tests/             runnable asserts
 app.py             Flask routes: landing page, dashboard, JSON/SSE API
 config.py          all paths, from environment variables
 storage.py         photo access behind an interface (swap in S3 later)
-templates/         landing page and dashboard
+templates/         landing page, dashboard and grade page
 static/            stylesheet and dashboard JavaScript
 Dockerfile         container image
 requirements.txt   pinned dependencies
@@ -212,5 +223,5 @@ docker run --rm -p 5000:5000 \
 - [x] Blur-based culling
 - [x] Web dashboard with live threshold tuning and per-photo overrides
 - [x] LUT (`.cube`) colour grading with trilinear interpolation
-- [ ] Grading in the dashboard (CLI only so far)
+- [x] Grading in the dashboard
 - [ ] Deployment (Dockerfile exists, never built)

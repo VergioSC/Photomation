@@ -13,6 +13,7 @@
       <div class="nav-links">
         <a href="{{ url_for('landing') }}" {% if active == 'home' %}class="active"{% endif %}>Overview</a>
         <a href="{{ url_for('dashboard') }}" {% if active == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('grade_page') }}" {% if active == 'grade' %}class="active"{% endif %}>Grade</a>
       </div>
     </div>
   </nav>
