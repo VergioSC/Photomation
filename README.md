@@ -213,10 +213,21 @@ to a container or a mounted volume without code changes:
 ```bash
 docker build -t photomation .
 docker run --rm -p 5000:5000 \
-    -v "$PWD/input:/data/input" \
+    -v "$PWD/input:/data/input:ro" \
     -v "$PWD/output:/data/output" \
+    -v "$PWD/luts:/data/luts:ro" \
     photomation
 ```
+
+Mounting `input/` and `luts/` read-only is worth doing: the app only ever reads
+them, so the container has no business writing there.
+
+The image is about 518 MB and has been built and run end to end - scan, apply
+and grade all work against mounted folders. It uses `opencv-python-headless`,
+which skips the `libGL` system libraries the GUI build needs; that removes the
+`apt-get` layer and roughly 320 MB. Nothing here opens a window, so the GUI
+build earns nothing. The trade: `cv2.imshow` is not available if you ever want
+it for debugging.
 
 ## Roadmap
 

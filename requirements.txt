@@ -5,7 +5,9 @@
 # (the whole point of checking this file in: .venv/ is gitignored, so this is
 # the only record of what the project needs).
 
-opencv-python==5.0.0.93   # image decoding, resizing, Laplacian edge filter
+opencv-python-headless==5.0.0.93  # image decoding, resizing, Laplacian edge filter.
+                          # Headless: we never open a window, and the GUI build drags
+                          # in libGL, which costs ~200MB in a container.
 numpy==2.5.4              # array maths; OpenCV images are numpy arrays
 
 # Format support beyond JPEG/PNG:

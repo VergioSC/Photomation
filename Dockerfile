@@ -9,11 +9,8 @@
 #
 FROM python:3.14-slim
 
-# OpenCV's non-headless build links against libGL and glib even when it never
-# opens a window. Without these the first `import cv2` fails in a slim image.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgl1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+# No apt layer needed: requirements.txt uses opencv-python-headless, which does
+# not link against libGL.
 
 WORKDIR /app
 
