@@ -5,12 +5,28 @@
 {% block content %}
 <header class="hero">
   <div class="wrap">
+    <div class="sticker-wall" aria-hidden="true">
+      <span class="sticker sticker-a">NO&nbsp;CLOUD</span>
+      <span class="sticker sticker-b">100%&nbsp;LOCAL</span>
+      <span class="sticker sticker-c">▚▚▚</span>
+      <span class="sticker sticker-d">v1.0</span>
+    </div>
+
     <span class="eyebrow">Photo culling</span>
-    <h1>Throw away the blurry ones.<br>Keep the sharp ones.</h1>
+    <h1 class="hero-title">
+      <span class="glitch" data-text="CUT THE NOISE.">CUT THE NOISE.</span>
+      <span class="hero-title-alt">KEEP THE SIGNAL.</span>
+    </h1>
+
+    <pre class="ascii-art" aria-hidden="true">
+ ░▒▓█  SHARP  █▓▒░        ░▒▓█  BLUR  █▓▒░
+ ██████████████▓▒░        ░▒▓█████▒░░░░░░░
+</pre>
+
     <p class="lead">
-      Photomation scores every frame in your shoot for sharpness, then sorts them
-      into keepers and rejects — so you stop squinting at a few hundred near-identical
-      photos trying to decide which one is actually in focus.
+      Photomation scores every frame in your shoot for sharpness, then sorts
+      them into keepers and rejects — so you stop squinting at a few hundred
+      near-identical photos trying to decide which one is actually in focus.
     </p>
     <div class="hero-actions">
       <a class="btn" href="{{ url_for('dashboard') }}">
@@ -53,7 +69,7 @@
         </p>
       </div>
       <div class="tile">
-        <div class="tile-icon">&#8594;</div>
+        <div class="tile-icon">&#9679;</div>
         <h3>Nothing is ever destroyed</h3>
         <p>
           Originals are only read and copied. Nothing in your input folder is moved,
@@ -62,7 +78,7 @@
         </p>
       </div>
       <div class="tile">
-        <div class="tile-icon">&#9881;</div>
+        <div class="tile-icon">&#9636;</div>
         <h3>Tune it live</h3>
         <p>
           Scoring happens once. The threshold slider then re-sorts the results

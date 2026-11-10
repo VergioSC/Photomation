@@ -399,6 +399,24 @@ preview, it falls back to a half-size demosaic.
 Unreadable or unsupported files are reported as `SKIP` with a reason; they never
 abort the run.
 
+## The interface
+
+The app wears a Watch Dogs 2 / DedSec skin: near-black ground, acid green with
+magenta and cyan accents, monospace throughout, hard edges and no rounded
+corners, halftone and scanline texture, chromatic-split glitch headings,
+rotated wheatpaste stickers and ASCII furniture.
+
+One rule overrides the whole aesthetic, and it is in the stylesheet as a
+comment: **nothing textured, tinted or glowing goes over a photograph.** Every
+image — grid thumbnails, the editor stage, the before/after pair, the
+full-size viewer — sits on a flat neutral dark surround with no filter on the
+image element. Judging exposure and colour against a neon surface is
+impossible, and judging them is the entire point of the app. The chrome is
+loud; the picture is not.
+
+The glitch effect is decorative only and is switched off under
+`prefers-reduced-motion`.
+
 ## Project layout
 
 ```
