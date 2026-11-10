@@ -30,6 +30,7 @@ import auto as auto_module
 import exif as exif_module
 import edit as edit_module
 import lut as lut_module
+import masks as masks_module
 import recipes as recipes_module
 from storage import LocalStorage
 
@@ -327,7 +328,11 @@ def api_preview(name):
         return jsonify({"error": "could not decode the preview source"}), 422
 
     source = edit_module.crop_image(source, _crop_from_args(request.args))
-    out = edit_module.apply_adjustments(source, _adjustments_from_args(request.args), table)
+    adj = _adjustments_from_args(request.args)
+    # Masks cost real time, so they are only worked out when a selective
+    # slider is actually asking for them.
+    scene = masks_module.analyse(source) if adj.has_regional else None
+    out = edit_module.apply_adjustments(source, adj, table, scene=scene)
     ok, buffer = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
         return jsonify({"error": "could not encode preview"}), 500
@@ -390,7 +395,8 @@ def api_grade():
                     source = "yours" if own else "untouched"
 
                 image = edit_module.crop_image(image, crop)
-                out = edit_module.apply_adjustments(image, adj, table)
+                scene = masks_module.analyse(image) if adj.has_regional else None
+                out = edit_module.apply_adjustments(image, adj, table, scene=scene)
                 if resize_to:
                     h, w = out.shape[:2]
                     scale = resize_to / max(h, w)

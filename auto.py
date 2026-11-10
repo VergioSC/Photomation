@@ -19,6 +19,7 @@ Every result is a suggestion that lands in the sliders, so you can take it as
 a starting point and move anything you disagree with.
 """
 
+import dataclasses
 from dataclasses import dataclass, field
 
 import cv2
@@ -26,6 +27,7 @@ import numpy as np
 
 import edit
 import exif
+import masks as masks_module
 
 # A normal midtone. Most photographs look right with the median here.
 TARGET_MEDIAN = 0.46
@@ -46,7 +48,7 @@ MAX_TONE = 45.0
 # hair and clothing carry far more detail than a backdrop.
 
 
-def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
+def analyse(image_bgr, want_crop=False, aspect=None, shot=None, selective=True):
     """Return (Adjustments, crop_rect_or_None, notes).
 
     crop_rect is (x, y, w, h) in 0..1. notes explains each decision in plain
@@ -58,6 +60,7 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
     # Work on a small copy: these are statistics, and full resolution adds
     # nothing but time.
     work = _downscale(image_bgr, 900)
+    original = work.copy()
     limits = judge(work, shot)
     notes = list(limits.verdicts)
 
@@ -105,6 +108,14 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
         vibrance=vibrance,
         sharpen=sharpen,
     )
+
+    if selective:
+        # Simulate the global edit so the region step can see what it did.
+        edited = edit.apply_adjustments(original, adj)
+        sky_exp, fg_exp, sky_con = _auto_regions(work, limits, notes,
+                                                 for_masks=original, edited=edited)
+        adj = dataclasses.replace(adj, sky_exposure=sky_exp,
+                                  foreground_exposure=fg_exp, sky_contrast=sky_con)
 
     rect = _auto_crop(work, aspect, notes) if want_crop else None
     return adj, rect, notes, limits
@@ -333,6 +344,56 @@ def _auto_tone(image, notes):
     if not shadows and not highlights:
         notes.append("Nothing clipped at either end.")
     return shadows, highlights
+
+
+def _auto_regions(image, limits, notes, for_masks=None, edited=None):
+    """Decide separate brightness for sky and ground.
+
+    The thing a global slider can never do. Removing haze and adding contrast
+    both take light out of the darkest part of a frame, which is usually the
+    ground. Measuring how far the ground actually fell during the global edit
+    says exactly how much to put back - a better guide than the sky-to-ground
+    gap, which only says a split might help.
+    """
+    source = for_masks if for_masks is not None else image
+    scene = masks_module.analyse(source)
+    if not scene.has_sky:
+        notes.append("No sky found, so the whole frame is treated together.")
+        return 0.0, 0.0, 0.0
+
+    ground = scene.foreground
+    sky = scene.sky
+    if ground.sum() < 100 or sky.sum() < 100:
+        return 0.0, 0.0, 0.0
+
+    def level(img, weight):
+        luma = np.sum(img.astype(np.float32) / 255.0 * edit.LUMA_BGR, axis=2)
+        return float((luma * weight).sum() / weight.sum())
+
+    before = level(source, ground)
+    after = level(edited, ground) if edited is not None else before
+    lost = before - after
+
+    fg = 0.0
+    if lost > 0.02:
+        # Put back most of the loss, not all: some of it is the contrast the
+        # picture wanted. 1.0 on this scale is two stops.
+        fg = float(np.clip(lost * 260.0, 0.0, 70.0))
+        if limits.noise_reduction >= 50:
+            fg = min(fg, 20.0)
+            notes.append("Ground lift capped: the shadows are too noisy to open further.")
+
+    gap = level(source, sky) - before
+    sky_amount = -float(np.clip((gap - 0.12) * 45.0, 0.0, 18.0))
+
+    if fg or sky_amount:
+        notes.append(f"Sky and ground handled separately: the ground lost "
+                     f"{lost * 100:.0f}% brightness in the edit and was lifted "
+                     f"{fg:.0f}, sky eased {abs(sky_amount):.0f}. "
+                     f"One slider cannot do both.")
+    else:
+        notes.append("Sky and ground are close enough to treat together.")
+    return round(sky_amount, 1), round(fg, 1), 0.0
 
 
 def _auto_crop(image, aspect, notes):

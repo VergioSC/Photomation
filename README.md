@@ -110,6 +110,7 @@ sliders, and the preview updates live:
 | Crop | Original / 1:1 / 4:5 / 3:2 / 16:9, auto crop, full frame |
 | Look | Film simulation, LUT, and how strongly to mix the LUT in |
 | Light | Dehaze, black point, white point, exposure (EV), contrast, highlights, shadows |
+| Selective | Sky brightness, ground brightness, sky contrast |
 | Colour | Temperature, tint, vibrance, saturation |
 | Detail | Noise reduction, clarity, sharpen, structure, grain, vignette |
 | Export | Resize the longest side, or keep the original |
@@ -230,6 +231,30 @@ This is image analysis, not a neural network, and nothing leaves your machine:
 | Vibrance | Only on a clean file and a dull scene. Vibrance pushes the weakest colours hardest, which is exactly where noise lives. |
 | Sharpening | Only within what the capture allows, and only when there is fine detail present to bring out. |
 
+### Selective editing
+
+Every other adjustment here is global: it moves all the pixels. That is why
+darkening a sky for drama also buries the sand in front of it. A human editor
+does not work that way — they darken the sky *and* lift the foreground,
+because they know which is which.
+
+`masks.py` works out soft masks for sky, foreground and subject, from the
+things that actually make sky look like sky: it sits at the top of the frame,
+it is smooth where land is textured, it is brighter than what is under it, and
+it leans cool rather than warm. None of those is decisive alone — a white wall
+is smooth and bright too — so they are scored together, and the result must
+connect to the top edge, since sky with ground above it is not sky. On the
+sample photos this finds 17–40% sky outdoors and **zero indoors**.
+
+Auto then measures how much brightness the ground actually *lost* during the
+global edit — dehaze and contrast both take light out of the darkest part of a
+frame — and puts most of it back. That is a better guide than the sky-to-ground
+gap, which only says a split might help, not how much.
+
+No model, no download, about 70 ms. `masks.analyse` takes a `backend`
+argument so a neural segmentation model can be placed behind the same
+interface later, for real per-class masks (person, skin, vegetation).
+
 ### How the picture is actually made
 
 Two things are done the way an editor does them rather than the obvious way.
@@ -302,6 +327,7 @@ cannot be parsed is listed with the reason rather than silently skipped.
 .venv/bin/python tests/test_lut.py
 .venv/bin/python tests/test_edit.py
 .venv/bin/python tests/test_recipes.py
+.venv/bin/python tests/test_masks.py
 ```
 
 Plain asserts, no test framework. Covers the `.cube` parser, an identity LUT
@@ -380,6 +406,7 @@ cull.py            scoring + CLI culling
 lut.py             .cube parser and trilinear interpolation
 edit.py            exposure, white balance, tone, colour, film looks, grain, crop
 auto.py            automatic analysis and photographic judgement
+masks.py           sky / foreground / subject masks for selective edits
 exif.py            reads the exposure triangle from a photo
 recipes.py         film recipe presets and the recipe importer
 import_recipe.py   CLI: turn a written-out recipe into a preset

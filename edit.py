@@ -33,6 +33,13 @@ class Adjustments:
     shadows: float = 0.0       # -100 crush .. +100 lift
     vibrance: float = 0.0      # -100 .. +100, spares already-saturated colour
     saturation: float = 0.0    # -100 greyscale .. +100
+    # Selective adjustments. These need region masks to do anything, and are
+    # ignored without them, so a caller that has not worked out the regions
+    # simply gets the global edit.
+    sky_exposure: float = 0.0        # -100 .. +100, brightness of the sky only
+    foreground_exposure: float = 0.0  # -100 .. +100, everything that is not sky
+    sky_contrast: float = 0.0        # -100 .. +100
+
     dehaze: float = 0.0        # 0 .. 100, cuts atmospheric veiling light
     black_point: float = 0.0   # 0 .. 100, how firmly to set a true black
     white_point: float = 0.0   # 0 .. 100, how firmly to reach a true white
@@ -65,6 +72,10 @@ class Adjustments:
                 continue
         return cls(**clean)
 
+    @property
+    def has_regional(self):
+        return bool(self.sky_exposure or self.foreground_exposure or self.sky_contrast)
+
     def is_identity(self):
         """True when nothing would change, so the work can be skipped."""
         return all(
@@ -85,14 +96,43 @@ def linear_to_srgb(x):
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1 / 2.4) - 0.055)
 
 
-def apply_adjustments(image_bgr, adj, lut=None):
+def apply_regional(image_bgr, adj, scene):
+    """Apply the selective parts of `adj` using `scene` masks.
+
+    This is the thing global sliders cannot do. Darkening a sky for drama also
+    buries the ground in front of it, so an editor darkens the sky and lifts
+    the foreground separately. With a mask, so can we.
+    """
+    if scene is None or not adj.has_regional:
+        return image_bgr
+
+    out = image_bgr
+    for amount, mask, extra in (
+        (adj.sky_exposure, scene.sky, {"contrast": adj.sky_contrast}),
+        (adj.foreground_exposure, scene.foreground, {}),
+    ):
+        if not amount and not extra.get("contrast"):
+            continue
+        if mask is None or float(mask.mean()) < 0.01:
+            continue
+        # Full scale is two stops: recovering a foreground that dehazing has
+        # darkened routinely needs more than one.
+        layer = apply_adjustments(out, Adjustments(exposure=amount / 50.0, **extra))
+        blend = mask[:, :, None]
+        out = (out.astype(np.float32) * (1.0 - blend)
+               + layer.astype(np.float32) * blend)
+        out = np.clip(out, 0, 255).astype(np.uint8)
+    return out
+
+
+def apply_adjustments(image_bgr, adj, lut=None, scene=None):
     """Apply `adj` (and optionally a LUT) to a BGR uint8 image.
 
     Order matters and follows what photo editors do: fix the light first
     (white balance, exposure), then shape the tones, then the colour, then the
     look (LUT), and sharpen last so earlier steps do not amplify its halos.
     """
-    if adj.is_identity() and lut is None:
+    if adj.is_identity() and lut is None and not (scene is not None and adj.has_regional):
         return image_bgr
 
     rgbish = image_bgr.astype(np.float32) / 255.0
@@ -156,6 +196,10 @@ def apply_adjustments(image_bgr, adj, lut=None):
             out = cv2.addWeighted(graded, strength, out, 1.0 - strength, 0.0)
         else:
             out = graded
+
+    # Selective work goes in after the global edit, before grain.
+    if scene is not None and adj.has_regional:
+        out = apply_regional(out, adj, scene)
 
     if adj.sharpen:
         out = _sharpen(out, adj.sharpen)

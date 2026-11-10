@@ -68,6 +68,8 @@
     exposure: "Exposure", contrast: "Contrast", highlights: "Highlights",
     shadows: "Shadows", temperature: "Temperature", tint: "Tint",
     vibrance: "Vibrance", saturation: "Saturation",
+    sky_exposure: "Sky brightness", foreground_exposure: "Ground brightness",
+    sky_contrast: "Sky contrast",
     dehaze: "Dehaze", black_point: "Black point", white_point: "White point",
     noise_reduction: "Noise reduction",
     clarity: "Clarity", structure: "Structure", grain: "Grain",
@@ -406,6 +408,9 @@
         noise_reduction: v.noise_reduction, vibrance: v.vibrance,
         sharpen: v.sharpen, dehaze: v.dehaze,
         black_point: v.black_point, white_point: v.white_point,
+        sky_exposure: v.sky_exposure,
+        foreground_exposure: v.foreground_exposure,
+        sky_contrast: v.sky_contrast,
       });
       if (data.crop) state.crop = data.crop;
       ui.autoNotes.replaceChildren();
