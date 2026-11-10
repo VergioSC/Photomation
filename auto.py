@@ -61,6 +61,15 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
     limits = judge(work, shot)
     notes = list(limits.verdicts)
 
+    # Haze is decided first and then APPLIED to the copy everything else is
+    # measured on. Removing haze takes light away, so a scene measured before
+    # it comes off reads brighter than the result actually is - which left the
+    # beach frames correctly de-hazed and two stops too dark.
+    dehaze = _auto_dehaze(work, notes)
+    if dehaze > 0:
+        work = edit.apply_adjustments(work, edit.Adjustments(dehaze=dehaze))
+
+    black_point, white_point = _auto_levels(work, notes)
     vibrance = _auto_vibrance(work, limits, notes)
     sharpen = _auto_sharpen(work, limits, notes)
     temperature, tint = _auto_white_balance(work, notes)
@@ -90,6 +99,9 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
         shadows=round(shadows_held, 1),
         highlights=round(highlights_held, 1),
         noise_reduction=limits.noise_reduction,
+        dehaze=dehaze,
+        black_point=black_point,
+        white_point=white_point,
         vibrance=vibrance,
         sharpen=sharpen,
     )
@@ -205,6 +217,54 @@ def _auto_contrast(image, notes):
     notes.append(f"Contrast raised {amount:.0f}: the photo used "
                  f"{spread * 100:.0f}% of the tonal range.")
     return round(amount, 1)
+
+
+def _auto_dehaze(image, notes):
+    """Measure the haze veil and remove it.
+
+    The dark channel - the darkest colour channel in each small patch - should
+    be near zero in a clear photo. Where it sits well above zero, scattered
+    light has been added on top of the scene. That is a physical veil, not low
+    contrast, which is why flat distance shots never respond to a contrast
+    slider.
+    """
+    small = _downscale(image, 400).astype(np.float32) / 255.0
+    veil = float(cv2.erode(small.min(axis=2), np.ones((9, 9), np.uint8)).mean() * 255)
+
+    if veil < 25:
+        notes.append("No haze to speak of.")
+        return 0.0
+    amount = float(np.clip((veil - 22) * 0.95, 0.0, 55.0))
+    notes.append(f"Haze removed ({amount:.0f}): a veil of scattered light was sitting "
+                 f"over the scene, measured at {veil:.0f} of 255.")
+    return round(amount, 1)
+
+
+def _auto_levels(image, notes):
+    """Give the photo a true black and a true white.
+
+    A frame whose darkest pixel is grey looks washed out no matter how much
+    contrast is added, because nothing in it is actually black.
+    """
+    luma = np.sum(image.astype(np.float32) / 255.0 * edit.LUMA_BGR, axis=2)
+    low = float(np.percentile(luma, 0.2))
+    high = float(np.percentile(luma, 99.8))
+
+    black = float(np.clip((low - 0.01) * 500.0, 0.0, 55.0))
+    white = float(np.clip((0.97 - high) * 220.0, 0.0, 55.0))
+    if black < 4:
+        black = 0.0
+    if white < 4:
+        white = 0.0
+
+    if black or white:
+        parts = []
+        if black:
+            parts.append(f"the darkest tones were only reaching {low * 255:.0f}")
+        if white:
+            parts.append(f"the brightest only reaching {high * 255:.0f}")
+        notes.append("Black and white points set: " + ", and ".join(parts) + ".")
+    return round(black, 1), round(white, 1)
 
 
 def _auto_vibrance(image, limits, notes):

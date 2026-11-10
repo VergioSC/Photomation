@@ -289,6 +289,26 @@ def test_auto_withholds_vibrance_and_sharpening_on_noisy_files():
     assert dirty.sharpen == 0, dirty.sharpen
 
 
+def test_auto_dehazes_a_hazy_scene_and_not_a_clear_one():
+    rng = np.random.default_rng(8)
+    scene = rng.integers(0, 255, (180, 240, 3)).astype(np.float32)
+    hazy = np.clip(scene * 0.45 + 150 * 0.55, 0, 255).astype(np.uint8)
+    clear = scene.astype(np.uint8)
+    assert auto.analyse(hazy)[0].dehaze > 20, auto.analyse(hazy)[0].dehaze
+    assert auto.analyse(clear)[0].dehaze == 0
+
+
+def test_auto_measures_exposure_after_dehazing():
+    """Dehazing darkens, so exposure judged before it comes off is wrong."""
+    rng = np.random.default_rng(9)
+    scene = rng.integers(0, 255, (180, 240, 3)).astype(np.float32)
+    hazy = np.clip(scene * 0.45 + 150 * 0.55, 0, 255).astype(np.uint8)
+    adj = auto.analyse(hazy)[0]
+    out = edit.apply_adjustments(hazy, adj)
+    median = float(np.median(np.sum(out.astype(np.float32) / 255.0 * edit.LUMA_BGR, axis=2)))
+    assert 0.2 < median < 0.75, f"ended up at {median:.2f} brightness"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

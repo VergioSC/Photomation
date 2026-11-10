@@ -109,7 +109,7 @@ sliders, and the preview updates live:
 | Film recipe | One-click presets that fill in every slider below |
 | Crop | Original / 1:1 / 4:5 / 3:2 / 16:9, auto crop, full frame |
 | Look | Film simulation, LUT, and how strongly to mix the LUT in |
-| Light | Exposure (EV), contrast, highlights, shadows |
+| Light | Dehaze, black point, white point, exposure (EV), contrast, highlights, shadows |
 | Colour | Temperature, tint, vibrance, saturation |
 | Detail | Noise reduction, clarity, sharpen, structure, grain, vignette |
 | Export | Resize the longest side, or keep the original |
@@ -224,6 +224,8 @@ This is image analysis, not a neural network, and nothing leaves your machine:
 | Contrast | Measures how much of the tonal range the photo actually uses and stretches it only if it is sitting in a narrow band. |
 | Shadows / highlights | Measures how much is clipped at each end and recovers only that much. |
 | Crop | Finds the busiest part of the frame by edge density, frames it on a rule-of-thirds line, and keeps 85% of the picture — a tightening, not a recomposition. |
+| Haze | Measured, then removed. See below — this is the single biggest change on a distance shot. |
+| Black & white points | A photo whose darkest pixel is grey looks washed out however much contrast you add. |
 | Noise | Set from ISO. A clean ISO 400 file gets none; ISO 10000 gets a firm clean-up. |
 | Vibrance | Only on a clean file and a dull scene. Vibrance pushes the weakest colours hardest, which is exactly where noise lives. |
 | Sharpening | Only within what the capture allows, and only when there is fine detail present to bring out. |
@@ -238,6 +240,20 @@ routine +27 that flattened everything under 10% brightness into a single
 black, which turned a dusk beach into a silhouette. The curve now steepens
 through the midtones and rolls off at both ends, so pure black stays black,
 pure white stays white, and no tone is thrown away.
+
+**Haze is removed before anything else, using the dark channel prior.** In a
+clear outdoor photo, almost every small patch contains something very dark in
+at least one colour channel — a shadow, a dark surface, a saturated colour.
+Haze adds a grey veil of scattered light, so that darkest value rises, and how
+far it has risen says how much haze lies between the camera and that patch.
+Subtracting it in proportion is what flat, milky distance shots actually need;
+a contrast slider never fixes them, because haze is *added light*, not low
+contrast. Measured on a sample frame, the veil fell from 78 of 255 to 29.
+
+Because removing haze takes light away, the scene is dehazed *first* and
+everything else — exposure, tone, levels — is then measured on the dehazed
+version. Measuring before it comes off left correctly de-hazed frames two
+stops too dark.
 
 **Noise is removed before anything amplifies it.** Raising exposure, adding
 contrast and pushing saturation all make existing noise louder, and cleaning

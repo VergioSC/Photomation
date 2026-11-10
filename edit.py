@@ -33,6 +33,9 @@ class Adjustments:
     shadows: float = 0.0       # -100 crush .. +100 lift
     vibrance: float = 0.0      # -100 .. +100, spares already-saturated colour
     saturation: float = 0.0    # -100 greyscale .. +100
+    dehaze: float = 0.0        # 0 .. 100, cuts atmospheric veiling light
+    black_point: float = 0.0   # 0 .. 100, how firmly to set a true black
+    white_point: float = 0.0   # 0 .. 100, how firmly to reach a true white
     noise_reduction: float = 0.0  # 0 .. 100
     clarity: float = 0.0       # -100 soften .. +100 punchy midtone contrast
     structure: float = 0.0     # -100 .. +100 fine detail contrast
@@ -109,6 +112,17 @@ def apply_adjustments(image_bgr, adj, lut=None):
         rgbish = np.clip(rgbish, 0.0, 1.0)
         cleaned = _denoise((rgbish * 255.0 + 0.5).astype(np.uint8), adj.noise_reduction)
         rgbish = cleaned.astype(np.float32) / 255.0
+
+    # Haze is physical veiling light sitting on top of the scene, so it comes
+    # off before the tones are shaped - otherwise every later step is working
+    # on a washed-out version of the picture.
+    if adj.dehaze > 0:
+        rgbish = np.clip(rgbish, 0.0, 1.0)
+        rgbish = _dehaze((rgbish * 255.0 + 0.5).astype(np.uint8),
+                         adj.dehaze).astype(np.float32) / 255.0
+
+    if adj.black_point or adj.white_point:
+        rgbish = _levels(rgbish, adj.black_point, adj.white_point)
 
     # --- tonal steps, judged on display values ---
     if adj.shadows or adj.highlights:
@@ -521,3 +535,74 @@ def _denoise(image_bgr, amount):
         L = cv2.fastNlMeansDenoising(L, None, float(h), 7, 21)
 
     return cv2.cvtColor(cv2.merge([L, a, b]), cv2.COLOR_LAB2BGR)
+
+
+def _dehaze(image_bgr, amount):
+    """Remove atmospheric haze using the dark channel prior.
+
+    The idea, from He, Sun and Tang (2009): in a clear outdoor photo, almost
+    every small patch contains something very dark in at least one colour
+    channel - a shadow, a dark surface, a saturated colour. Haze adds a grey
+    veil of scattered light, so that darkest value rises. How far it has risen
+    tells you how much haze sits between the camera and that patch, and the
+    veil can be subtracted in proportion.
+
+    This is what flat, milky distance shots actually need. No amount of
+    contrast fixes them, because the haze is added light, not low contrast.
+    """
+    strength = max(0.0, min(100.0, amount)) / 100.0
+    x = image_bgr.astype(np.float32) / 255.0
+    height, width = x.shape[:2]
+
+    # Work the estimate out at a modest size: haze varies slowly across a
+    # scene, and this keeps a full-resolution photo affordable.
+    scale = 480.0 / max(height, width)
+    small = cv2.resize(x, (max(1, int(width * scale)), max(1, int(height * scale))),
+                       interpolation=cv2.INTER_AREA) if scale < 1 else x
+
+    patch = max(3, (min(small.shape[:2]) // 40) | 1)
+    dark = cv2.erode(small.min(axis=2), np.ones((patch, patch), np.uint8))
+
+    # Atmospheric light: the colour of the haze itself, taken from the haziest
+    # pixels rather than simply the brightest, which could be a light source.
+    flat = dark.ravel()
+    count = max(1, flat.size // 1000)
+    idx = np.argpartition(flat, -count)[-count:]
+    air = np.clip(small.reshape(-1, 3)[idx].mean(axis=0), 0.1, 1.0)
+
+    # Transmission: how much of the scene survives the haze.
+    omega = 0.55 + 0.40 * strength
+    transmission = 1.0 - omega * cv2.erode((small / air).min(axis=2),
+                                           np.ones((patch, patch), np.uint8))
+    # Soften the map so it does not leave halos along strong edges.
+    transmission = cv2.GaussianBlur(transmission, (0, 0),
+                                    sigmaX=max(small.shape[:2]) / 50.0)
+    transmission = cv2.resize(transmission, (width, height),
+                              interpolation=cv2.INTER_LINEAR)
+    transmission = np.clip(transmission, 0.18, 1.0)[:, :, None]
+
+    out = (x - air) / transmission + air
+    return (np.clip(out, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+
+
+def _levels(x, black_amount, white_amount):
+    """Set a true black and a true white, the first move in any edit.
+
+    A photo whose darkest pixel is grey looks washed out however much contrast
+    is added. This finds where the real tones actually start and stop and maps
+    them to the ends of the range - partially, by the amounts given, so it
+    tightens the picture without clipping anything that was there.
+    """
+    luma = np.sum(x * LUMA_BGR, axis=2)
+    low = float(np.percentile(luma, 0.2))
+    high = float(np.percentile(luma, 99.8))
+    if high - low < 0.05:
+        return x
+
+    target_low = low * (1.0 - black_amount / 100.0)
+    target_high = high + (1.0 - high) * (white_amount / 100.0)
+    if target_high - target_low < 1e-3:
+        return x
+
+    scale = (target_high - target_low) / (high - low)
+    return (x - low) * scale + target_low

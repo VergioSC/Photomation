@@ -167,6 +167,44 @@ def test_noise_reduction_off_by_default():
     assert np.array_equal(edit.apply_adjustments(img, edit.Adjustments()), img)
 
 
+
+def _hazy():
+    """A scene with a grey veil laid over it, as distance haze does."""
+    rng = np.random.default_rng(5)
+    scene = rng.integers(0, 255, (180, 240, 3)).astype(np.float32)
+    veil = 150.0
+    t = 0.45                                   # 45% of the scene survives
+    return np.clip(scene * t + veil * (1 - t), 0, 255).astype(np.uint8)
+
+
+def _veil(im):
+    f = im.astype(np.float32) / 255.0
+    return float(cv2.erode(f.min(axis=2), np.ones((9, 9), np.uint8)).mean() * 255)
+
+
+def test_dehaze_removes_the_veil():
+    hazy = _hazy()
+    out = edit.apply_adjustments(hazy, edit.Adjustments(dehaze=70))
+    assert _veil(out) < _veil(hazy) * 0.6, (_veil(out), _veil(hazy))
+
+
+def test_dehaze_leaves_a_clear_photo_nearly_alone():
+    rng = np.random.default_rng(6)
+    clear = rng.integers(0, 255, (180, 240, 3)).astype(np.uint8)
+    out = edit.apply_adjustments(clear, edit.Adjustments(dehaze=70))
+    assert float(np.abs(out.astype(int) - clear.astype(int)).mean()) < 30
+
+
+def test_levels_do_not_clip_what_was_there():
+    rng = np.random.default_rng(7)
+    img = np.clip(rng.normal(128, 30, (120, 160, 3)), 20, 230).astype(np.uint8)
+    out = edit.apply_adjustments(img, edit.Adjustments(black_point=40, white_point=40))
+    assert int(out.min()) < int(img.min()), "black point did not deepen"
+    assert int(out.max()) > int(img.max()), "white point did not brighten"
+    # no wholesale crushing: the spread of distinct values must survive
+    assert len(np.unique(out)) > len(np.unique(img)) * 0.7
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
