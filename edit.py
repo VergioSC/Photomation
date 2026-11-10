@@ -33,6 +33,7 @@ class Adjustments:
     shadows: float = 0.0       # -100 crush .. +100 lift
     vibrance: float = 0.0      # -100 .. +100, spares already-saturated colour
     saturation: float = 0.0    # -100 greyscale .. +100
+    noise_reduction: float = 0.0  # 0 .. 100
     clarity: float = 0.0       # -100 soften .. +100 punchy midtone contrast
     structure: float = 0.0     # -100 .. +100 fine detail contrast
     vignette: float = 0.0      # -100 brighter corners .. +100 darker corners
@@ -100,6 +101,14 @@ def apply_adjustments(image_bgr, adj, lut=None):
         if adj.exposure:
             linear = linear * (2.0 ** adj.exposure)
         rgbish = linear_to_srgb(linear)
+
+    # Noise first, before anything amplifies it. Raising exposure, adding
+    # contrast and pushing saturation all make existing noise louder, and no
+    # amount of cleaning afterwards puts that back.
+    if adj.noise_reduction > 0:
+        rgbish = np.clip(rgbish, 0.0, 1.0)
+        cleaned = _denoise((rgbish * 255.0 + 0.5).astype(np.uint8), adj.noise_reduction)
+        rgbish = cleaned.astype(np.float32) / 255.0
 
     # --- tonal steps, judged on display values ---
     if adj.shadows or adj.highlights:
@@ -174,9 +183,26 @@ def _tone_regions(x, shadows, highlights):
 
 
 def _contrast(x, amount):
-    """Push values away from (or towards) mid grey."""
-    factor = 1.0 + amount / 100.0
-    return (x - 0.5) * factor + 0.5
+    """An S-curve, the way a darkroom print or a film stock adds contrast.
+
+    The obvious version - multiply the distance from mid grey - drives darks
+    below zero and brights above one, where they clip. At a moderate +27 that
+    flattened everything under 10% brightness into identical black, which is
+    what turned a dusk beach into a silhouette.
+
+    This instead bends the curve: it steepens through the midtones and rolls
+    off towards both ends, so pure black stays black, pure white stays white,
+    and nothing is ever thrown away.
+    """
+    t = amount / 100.0
+    if t > 0:
+        # smoothstep: 0->0, 1->1, steeper in the middle, flat at both ends.
+        shaped = x * x * (3.0 - 2.0 * x)
+    else:
+        # Flatten towards mid grey without collapsing the ends.
+        shaped = 0.5 + (x - 0.5) * 0.45
+        t = -t
+    return x + (shaped - x) * t
 
 
 def _colour(x, vibrance, saturation):
@@ -462,3 +488,36 @@ def _vignette(image_bgr, amount):
     falloff = np.clip(radius, 0.0, 1.0) ** 2
     gain = 1.0 - falloff * strength * 0.85
     return np.clip(image_bgr.astype(np.float32) * gain[:, :, None], 0, 255).astype(np.uint8)
+
+
+def _denoise(image_bgr, amount):
+    """Reduce noise, colour blotches first.
+
+    High-ISO noise comes in two kinds. Colour noise - the red and green
+    speckle in shadows - is the ugly one, and it lives at a coarse scale, so
+    it can be cleaned cheaply by smoothing only the colour channels and
+    leaving brightness alone. Detail survives because detail is brightness.
+
+    Luminance noise is finer and sits on top of real texture, so removing it
+    costs sharpness. It is only touched at higher settings, and more gently.
+    """
+    strength = max(0.0, min(100.0, amount)) / 100.0
+    lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+    L, a, b = cv2.split(lab)
+
+    # Colour is low-frequency: shrink it, median away the speckle, put it back.
+    factor = int(2 + round(strength * 4))                 # 2 .. 6
+    ksize = 3 + 2 * int(round(strength * 2))              # 3, 5 or 7
+    height, width = a.shape
+    small = (max(1, width // factor), max(1, height // factor))
+    for channel in (a, b):
+        shrunk = cv2.resize(channel, small, interpolation=cv2.INTER_AREA)
+        shrunk = cv2.medianBlur(shrunk, ksize)
+        channel[:] = cv2.resize(shrunk, (width, height), interpolation=cv2.INTER_LINEAR)
+
+    # Luminance only once the setting is high enough to be worth the softness.
+    if strength > 0.35:
+        h = (strength - 0.35) / 0.65 * 13.0
+        L = cv2.fastNlMeansDenoising(L, None, float(h), 7, 21)
+
+    return cv2.cvtColor(cv2.merge([L, a, b]), cv2.COLOR_LAB2BGR)

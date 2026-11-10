@@ -61,6 +61,8 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
     limits = judge(work, shot)
     notes = list(limits.verdicts)
 
+    vibrance = _auto_vibrance(work, limits, notes)
+    sharpen = _auto_sharpen(work, limits, notes)
     temperature, tint = _auto_white_balance(work, notes)
     exposure = _auto_exposure(work, notes)
     contrast = _auto_contrast(work, notes)
@@ -87,6 +89,9 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
         contrast=contrast,
         shadows=round(shadows_held, 1),
         highlights=round(highlights_held, 1),
+        noise_reduction=limits.noise_reduction,
+        vibrance=vibrance,
+        sharpen=sharpen,
     )
 
     rect = _auto_crop(work, aspect, notes) if want_crop else None
@@ -169,19 +174,84 @@ def _auto_exposure(image, notes):
 
 
 def _auto_contrast(image, notes):
-    """Stretch a photo that only uses part of the available range."""
+    """Add contrast only where the photo is genuinely flat, and gently.
+
+    A dusk seascape or an overcast morning uses a narrow range *because that
+    is what it looked like*. Treating narrow range as a fault and stretching
+    it hard turns soft evening light into a harsh silhouette, which is exactly
+    what this used to do.
+    """
     luma = np.sum(image.astype(np.float32) / 255.0 * edit.LUMA_BGR, axis=2)
     low, high = np.percentile(luma, (2, 98))
     spread = float(high - low)
-    if spread >= 0.78:
+    median = float(np.median(luma))
+
+    if spread >= 0.72:
         notes.append("Contrast already full.")
         return 0.0
-    # A photo using 50% of the range gets a firm push; one using 75% a nudge.
-    amount = float(np.clip((0.80 - spread) * 110.0, 0.0, 40.0))
+
+    amount = float(np.clip((0.72 - spread) * 55.0, 0.0, 22.0))
+
+    # A dark, low-contrast frame is usually dusk or night, and the mood is the
+    # point. Half the push, so it gains shape without becoming a silhouette.
+    if median < 0.32:
+        amount *= 0.5
+        if amount >= 3:
+            notes.append("Low, soft light: contrast added sparingly so the mood survives.")
+
+    if amount < 3:
+        notes.append("Contrast left alone: the softness looks deliberate.")
+        return 0.0
+    notes.append(f"Contrast raised {amount:.0f}: the photo used "
+                 f"{spread * 100:.0f}% of the tonal range.")
+    return round(amount, 1)
+
+
+def _auto_vibrance(image, limits, notes):
+    """A little colour lift, but only on a clean file and a dull scene.
+
+    Vibrance pushes the weakest colours hardest, which is also where noise
+    lives, so a noisy frame gets none of it. A scene that is already colourful
+    gets none either: adding more would only look artificial.
+    """
+    if limits.noise_reduction >= 50:
+        notes.append("No colour lift: too noisy, it would push the speckle as well.")
+        return 0.0
+
+    x = image.astype(np.float32) / 255.0
+    channel_max = x.max(axis=2)
+    channel_min = x.min(axis=2)
+    colourfulness = float(np.mean((channel_max - channel_min) / np.maximum(channel_max, 1e-6)))
+
+    if colourfulness > 0.30:
+        notes.append("Colour already strong, so none was added.")
+        return 0.0
+    amount = float(np.clip((0.30 - colourfulness) * 70.0, 0.0, 16.0))
     if amount < 3:
         return 0.0
-    notes.append(f"Contrast raised {amount:.0f}: the photo only used "
-                 f"{spread * 100:.0f}% of the tonal range.")
+    notes.append(f"Vibrance +{amount:.0f}: the weaker colours were lifted, "
+                 f"leaving the strong ones alone.")
+    return round(amount, 1)
+
+
+def _auto_sharpen(image, limits, notes):
+    """Modest output sharpening, within whatever the capture allows."""
+    cap = limits.max_sharpen
+    if cap <= 15:
+        notes.append("No sharpening: the capture will not take it.")
+        return 0.0
+    # How much fine detail is actually present. A soft frame gains little and
+    # an already-crisp one needs little.
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    detail = float((grey - cv2.GaussianBlur(grey, (0, 0), 1.5)).std())
+    if detail < 1.5:
+        notes.append("No sharpening: there is no fine detail to bring out.")
+        return 0.0
+    amount = float(np.clip(22.0 - detail * 0.8, 6.0, 22.0))
+    amount = min(amount, cap * 0.45)
+    if amount < 4:
+        return 0.0
+    notes.append(f"Sharpening +{amount:.0f}, kept well inside what this capture allows.")
     return round(amount, 1)
 
 
@@ -260,6 +330,7 @@ def _auto_crop(image, aspect, notes):
 class Limits:
     """How far this particular photo can be pushed, and why."""
 
+    noise_reduction: float = 0.0
     max_shadow_lift: float = 55.0
     max_highlight_pull: float = 55.0
     max_sharpen: float = 60.0
@@ -275,10 +346,13 @@ class Limits:
 # ISO bands and what each costs in noise. Lifting shadows amplifies whatever
 # noise is already there, so the dirtier the capture the less room there is.
 ISO_BUDGET = [
-    (800, 55.0, 60.0, "Low ISO: clean file, plenty of room to lift shadows."),
-    (3200, 38.0, 42.0, "Moderate ISO: some noise, so shadows are lifted with care."),
-    (12800, 22.0, 25.0, "High ISO: noise limits how far shadows and detail can be pushed."),
-    (float("inf"), 12.0, 14.0, "Very high ISO: heavy noise, so only gentle moves are safe."),
+    (800, 55.0, 60.0, 0.0, "Low ISO: clean file, plenty of room to lift shadows."),
+    (1600, 45.0, 50.0, 18.0, "Mid ISO: a little noise, cleaned lightly."),
+    (3200, 38.0, 42.0, 32.0, "Moderate ISO: some noise, so shadows are lifted with care."),
+    (12800, 22.0, 25.0, 52.0, "High ISO: colour noise cleaned up, and shadows and detail "
+                              "are not pushed far."),
+    (float("inf"), 12.0, 14.0, 70.0, "Very high ISO: heavy noise, cleaned firmly, and only "
+                                     "gentle moves are safe."),
 ]
 
 
@@ -317,11 +391,12 @@ def judge(image_bgr, shot=None):
         limits.note(f"Shot at {shot.summary()}.")
 
     if shot.iso:
-        for ceiling, shadow_cap, detail_cap, reason in ISO_BUDGET:
+        for ceiling, shadow_cap, detail_cap, nr, reason in ISO_BUDGET:
             if shot.iso <= ceiling:
                 limits.max_shadow_lift = min(limits.max_shadow_lift, shadow_cap)
                 limits.max_clarity = min(limits.max_clarity, detail_cap)
                 limits.max_sharpen = min(limits.max_sharpen, detail_cap)
+                limits.noise_reduction = nr
                 limits.note(f"ISO {shot.iso}. {reason}")
                 break
 

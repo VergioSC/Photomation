@@ -68,6 +68,7 @@
     exposure: "Exposure", contrast: "Contrast", highlights: "Highlights",
     shadows: "Shadows", temperature: "Temperature", tint: "Tint",
     vibrance: "Vibrance", saturation: "Saturation",
+    noise_reduction: "Noise reduction",
     clarity: "Clarity", structure: "Structure", grain: "Grain",
     sharpen: "Sharpen", vignette: "Vignette",
     lut_strength: "Strength",
@@ -401,6 +402,8 @@
       setValues({
         exposure: v.exposure, contrast: v.contrast, highlights: v.highlights,
         shadows: v.shadows, temperature: v.temperature, tint: v.tint,
+        noise_reduction: v.noise_reduction, vibrance: v.vibrance,
+        sharpen: v.sharpen,
       });
       if (data.crop) state.crop = data.crop;
       ui.autoNotes.replaceChildren();

@@ -55,6 +55,11 @@ They are copied into the input folder; your originals are not moved. Finished
 photos come back out through **Download zip**, so neither end of the job needs
 a file manager.
 
+Each card shows the capture settings, because they explain most low scores:
+a 1/25s hand-held frame is soft for a reason. The **⤢** button opens the photo
+large, since you cannot judge focus from a thumbnail — which is the whole
+question this page is asking.
+
 **Click any photo to overrule the threshold.** Clicking cycles it between
 following the slider, forced keep, and forced reject, and a badge shows which.
 This matters because the score measures the whole frame: a sharp photo of an
@@ -106,7 +111,7 @@ sliders, and the preview updates live:
 | Look | Film simulation, LUT, and how strongly to mix the LUT in |
 | Light | Exposure (EV), contrast, highlights, shadows |
 | Colour | Temperature, tint, vibrance, saturation |
-| Detail | Clarity, sharpen, structure, grain, vignette |
+| Detail | Noise reduction, clarity, sharpen, structure, grain, vignette |
 | Export | Resize the longest side, or keep the original |
 
 ### Film recipes
@@ -219,6 +224,28 @@ This is image analysis, not a neural network, and nothing leaves your machine:
 | Contrast | Measures how much of the tonal range the photo actually uses and stretches it only if it is sitting in a narrow band. |
 | Shadows / highlights | Measures how much is clipped at each end and recovers only that much. |
 | Crop | Finds the busiest part of the frame by edge density, frames it on a rule-of-thirds line, and keeps 85% of the picture — a tightening, not a recomposition. |
+| Noise | Set from ISO. A clean ISO 400 file gets none; ISO 10000 gets a firm clean-up. |
+| Vibrance | Only on a clean file and a dull scene. Vibrance pushes the weakest colours hardest, which is exactly where noise lives. |
+| Sharpening | Only within what the capture allows, and only when there is fine detail present to bring out. |
+
+### How the picture is actually made
+
+Two things are done the way an editor does them rather than the obvious way.
+
+**Contrast is an S-curve, not a multiplier.** Scaling the distance from mid
+grey drives darks below zero and brights above one, where they clip. At a
+routine +27 that flattened everything under 10% brightness into a single
+black, which turned a dusk beach into a silhouette. The curve now steepens
+through the midtones and rolls off at both ends, so pure black stays black,
+pure white stays white, and no tone is thrown away.
+
+**Noise is removed before anything amplifies it.** Raising exposure, adding
+contrast and pushing saturation all make existing noise louder, and cleaning
+afterwards cannot undo that. Colour noise — the speckle in shadows — is
+handled first and cheaply, by smoothing only the colour channels and leaving
+brightness alone, because detail *is* brightness. Luminance noise costs
+sharpness to remove, so it is only touched at higher settings. On an ISO 10000
+frame this brings colour speckle down to roughly ISO 400 levels.
 
 There is no face detection: OpenCV 5 removed the Haar classifier API, and its
 replacement needs a model file downloaded into the project. Edge density finds

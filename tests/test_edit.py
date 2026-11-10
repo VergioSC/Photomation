@@ -4,6 +4,7 @@
 import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -122,6 +123,48 @@ def test_lut_strength_blends():
         assert int(full[0, 0, 0]) < 5, full[0, 0, 0]
         assert 55 < int(half[0, 0, 0]) < 75, half[0, 0, 0]
         assert int(none[0, 0, 0]) == 128, none[0, 0, 0]
+
+
+
+def test_contrast_never_throws_tones_away():
+    """The old linear contrast flattened everything under 10% into one black."""
+    steps = np.array([0, 5, 13, 26, 128, 204, 242, 255], dtype=np.uint8)
+    img = np.tile(steps.reshape(1, -1, 1), (2, 1, 3))
+    out = edit.apply_adjustments(img, edit.Adjustments(contrast=40))[0, :, 0]
+    assert len(set(int(v) for v in out)) == len(steps), f"tones merged: {list(out)}"
+    assert int(out[0]) == 0 and int(out[-1]) == 255, "endpoints moved"
+
+
+def test_contrast_is_monotonic():
+    ramp = np.tile(np.arange(256, dtype=np.uint8).reshape(1, -1, 1), (2, 1, 3))
+    for amount in (-60, -20, 20, 60):
+        out = edit.apply_adjustments(ramp, edit.Adjustments(contrast=amount))[0, :, 0].astype(int)
+        assert np.all(np.diff(out) >= 0), f"contrast {amount} is not monotonic"
+
+
+def test_noise_reduction_cuts_colour_speckle_more_than_detail():
+    """Colour noise should go; brightness detail should mostly stay."""
+    rng = np.random.default_rng(1)
+    base = np.zeros((200, 200, 3), dtype=np.uint8)
+    base[:, 100:] = 90                                  # one real edge
+    noisy = np.clip(base.astype(np.int16) +
+                    rng.normal(0, 9, base.shape), 0, 255).astype(np.uint8)
+
+    def chroma(im):
+        lab = cv2.cvtColor(im, cv2.COLOR_BGR2LAB).astype(np.float32)
+        return sum(float((lab[:, :, c] -
+                          cv2.GaussianBlur(lab[:, :, c], (0, 0), 2.0)).std()) for c in (1, 2))
+
+    cleaned = edit.apply_adjustments(noisy, edit.Adjustments(noise_reduction=60))
+    assert chroma(cleaned) < chroma(noisy) * 0.75, (chroma(cleaned), chroma(noisy))
+    # the edge is still an edge
+    step = int(cleaned[100, 110, 0]) - int(cleaned[100, 90, 0])
+    assert step > 60, f"edge washed out: {step}"
+
+
+def test_noise_reduction_off_by_default():
+    img = np.full((20, 20, 3), 100, dtype=np.uint8)
+    assert np.array_equal(edit.apply_adjustments(img, edit.Adjustments()), img)
 
 
 if __name__ == "__main__":

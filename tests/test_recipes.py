@@ -262,6 +262,33 @@ def test_solarized_look_reverses_the_highlights():
     assert int(out[255]) < int(out[peak]) - 60, "highlights did not reverse"
 
 
+def test_auto_does_not_crush_a_dusk_scene():
+    """A dark, low-contrast frame is dusk, not a fault. Half contrast at most."""
+    rng = np.random.default_rng(2)
+    dusk = np.clip(rng.normal(55, 16, (160, 240, 3)), 0, 255).astype(np.uint8)
+    bright_flat = np.clip(rng.normal(150, 16, (160, 240, 3)), 0, 255).astype(np.uint8)
+    dusk_adj = auto.analyse(dusk)[0]
+    flat_adj = auto.analyse(bright_flat)[0]
+    assert dusk_adj.contrast < flat_adj.contrast, (dusk_adj.contrast, flat_adj.contrast)
+
+
+def test_auto_sets_noise_reduction_from_iso():
+    import exif
+    img = _scene(120)
+    clean = auto.analyse(img, shot=exif.Shot(iso=200))[0]
+    dirty = auto.analyse(img, shot=exif.Shot(iso=12800))[0]
+    assert clean.noise_reduction == 0, clean.noise_reduction
+    assert dirty.noise_reduction >= 40, dirty.noise_reduction
+
+
+def test_auto_withholds_vibrance_and_sharpening_on_noisy_files():
+    import exif
+    img = _scene(120)
+    dirty = auto.analyse(img, shot=exif.Shot(iso=25600, shutter=1/8, focal_35mm=85))[0]
+    assert dirty.vibrance == 0, dirty.vibrance
+    assert dirty.sharpen == 0, dirty.sharpen
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

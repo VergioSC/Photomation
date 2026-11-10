@@ -122,6 +122,21 @@
 </main>
 
 <div class="toast" id="toast"></div>
+
+<!-- Full-size viewer: a 132px thumbnail cannot tell you whether a photo is
+     sharp, which is the whole question this page is asking. -->
+<div class="viewer hidden" id="viewer">
+  <div class="viewer-bar">
+    <span class="mono" id="viewer-name"></span>
+    <span class="caption" id="viewer-shot"></span>
+    <span class="caption mono" id="viewer-score"></span>
+    <button class="btn btn-secondary btn-small" id="viewer-close" style="margin-left:auto">Close</button>
+  </div>
+  <div class="viewer-stage" id="viewer-stage">
+    <img id="viewer-img" alt="">
+  </div>
+  <p class="caption viewer-hint">Click the photo to zoom to 100%. Esc closes.</p>
+</div>
 {% endblock %}
 
 {% block scripts %}

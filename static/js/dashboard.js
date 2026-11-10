@@ -83,7 +83,8 @@
         ui.results.classList.remove("hidden");
         ui.scanCount.textContent = `0 / ${total}`;
       } else if (msg.type === "photo") {
-        state.photos.push({ name: msg.name, score: msg.score, decode: msg.decode });
+        state.photos.push({ name: msg.name, score: msg.score, decode: msg.decode,
+                            shot: msg.shot || "", iso: msg.iso || 0 });
         ui.scanCount.textContent = `${msg.index} / ${total}`;
         ui.progress.style.width = `${(msg.index / total) * 100}%`;
         scheduleRender();
@@ -207,8 +208,20 @@
       score.className = "photo-score";
       const name = document.createElement("div");
       name.className = "photo-name";
-      meta.append(score, name);
-      card.append(img, badge, meta);
+      const shot = document.createElement("div");
+      shot.className = "photo-exif";
+      meta.append(score, name, shot);
+
+      // Opening the photo must not also flip its verdict, so the viewer gets
+      // its own button rather than sharing the card's click.
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "photo-open";
+      open.textContent = "\u2922";
+      open.title = "View large";
+      open.addEventListener("click", (e) => { e.stopPropagation(); openViewer(photo); });
+
+      card.append(img, badge, open, meta);
       card.addEventListener("click", () => cycleOverride(photo.name));
       cardCache.set(photo.name, card);
     }
@@ -216,6 +229,7 @@
     card.querySelector(".photo-score").textContent = photo.score.toFixed(1);
     const name = card.querySelector(".photo-name");
     name.textContent = photo.name;
+    card.querySelector(".photo-exif").textContent = photo.shot || "";
     const badge = card.querySelector(".photo-badge");
     badge.textContent = forced === undefined ? "" : forced === "keep" ? "kept by you" : "binned by you";
     card.classList.toggle("photo-forced", forced !== undefined);
@@ -387,6 +401,33 @@
   }
 
   /* ---------------- boot ---------------- */
+
+  /* ---------------- the viewer ---------------- */
+
+  const viewer = el("viewer");
+  const viewerImg = el("viewer-img");
+  const viewerStage = el("viewer-stage");
+
+  function openViewer(photo) {
+    el("viewer-name").textContent = photo.name;
+    el("viewer-shot").textContent = photo.shot || "";
+    el("viewer-score").textContent = `blur score ${photo.score.toFixed(1)}`;
+    // A big render, because the point is to judge whether it is actually sharp.
+    viewerImg.src = `/api/preview/${encodeURIComponent(photo.name)}?from=input&size=2400&lut=none`;
+    viewerStage.classList.remove("zoomed");
+    viewer.classList.remove("hidden");
+  }
+
+  function closeViewer() {
+    viewer.classList.add("hidden");
+    viewerImg.src = "";
+  }
+
+  viewerStage.addEventListener("click", () => viewerStage.classList.toggle("zoomed"));
+  el("viewer-close").addEventListener("click", closeViewer);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !viewer.classList.contains("hidden")) closeViewer();
+  });
 
   /* ---------------- uploading ---------------- */
 

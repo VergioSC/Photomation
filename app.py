@@ -77,6 +77,7 @@ def api_scan():
             try:
                 image, label = store.load_image(ref)
                 score = cull.blur_score_of(image)
+                shot = exif_module.read(ref.path)
                 payload = {
                     "type": "photo",
                     "index": index,
@@ -84,6 +85,10 @@ def api_scan():
                     "score": round(score, 1),
                     "decode": label,
                     "size_bytes": ref.size_bytes,
+                    # The capture settings explain a lot of low scores, so they
+                    # belong next to the verdict rather than hidden away.
+                    "shot": shot.summary() if shot.known else "",
+                    "iso": shot.iso,
                 }
             except cull.LoadError as exc:
                 payload = {

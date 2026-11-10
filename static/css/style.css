@@ -440,3 +440,31 @@ input[type="number"]:focus { outline: none; border-color: var(--accent); border-
 }
 .recipe-group:first-child { padding-top: 0; }
 .recipe-list { max-height: 340px; }
+
+/* ============================ Photo viewer ============================ */
+.viewer {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(20, 20, 22, 0.97);
+  display: grid; grid-template-rows: auto 1fr auto;
+}
+.viewer-bar {
+  display: flex; align-items: center; gap: var(--s4);
+  padding: var(--s3) var(--s5);
+  color: #fff; border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+.viewer-bar .caption { color: rgba(255,255,255,0.65); }
+.viewer-stage { overflow: auto; display: grid; place-items: center; padding: var(--s4); }
+.viewer-stage img { max-width: 100%; max-height: 100%; display: block; cursor: zoom-in; }
+.viewer-stage.zoomed { place-items: start; }
+.viewer-stage.zoomed img { max-width: none; max-height: none; cursor: zoom-out; }
+.viewer-hint { text-align: center; color: rgba(255,255,255,0.5); padding: var(--s3); margin: 0; }
+
+.photo-exif { font-size: 10px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.photo-open {
+  position: absolute; top: var(--s2); right: var(--s2);
+  width: 24px; height: 24px; border: none; border-radius: var(--r-sm);
+  background: rgba(29,29,31,0.74); color: #fff; cursor: pointer;
+  font-size: 13px; line-height: 1; display: grid; place-items: center; padding: 0;
+  opacity: 0; transition: opacity 140ms var(--ease);
+}
+.photo:hover .photo-open, .photo-open:focus-visible { opacity: 1; }
