@@ -1,0 +1,17 @@
+{
+  "name": "Richard Avedon",
+  "group": "Photographer",
+  "notes": "Stark portrait against white. Very high key, no setting, nowhere for the subject to hide.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "monochrome",
+    "contrast": 26,
+    "highlights": 36,
+    "shadows": -8,
+    "clarity": 10,
+    "sharpen": 22,
+    "structure": 14,
+    "grain": 6
+  },
+  "crop_aspect": 0.8
+}

@@ -1,0 +1,17 @@
+{
+  "name": "William Eggleston",
+  "group": "Photographer",
+  "notes": "Dye-transfer colour on ordinary things. Reds that shout, warm light, the everyday taken seriously.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "velvia",
+    "saturation": 28,
+    "vibrance": 14,
+    "temperature": 13,
+    "contrast": 17,
+    "clarity": 10,
+    "grain": 10,
+    "vignette": 8
+  },
+  "crop_aspect": 1.5
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Sebasti\u00e3o Salgado",
+  "group": "Photographer",
+  "notes": "Epic documentary monochrome with painterly luminosity. Deep tones, rich midtones, light that seems to come from inside the frame.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "acros",
+    "contrast": 24,
+    "clarity": 16,
+    "structure": 20,
+    "highlights": -14,
+    "shadows": -8,
+    "grain": 18,
+    "vignette": 26
+  }
+}

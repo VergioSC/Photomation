@@ -1,0 +1,19 @@
+{
+  "name": "Sally Mann",
+  "group": "Photographer",
+  "notes": "Large format and wet plate. Glowing highlights, soft edges and the flaws of the process left in.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "acros",
+    "contrast": 15,
+    "highlights": 21,
+    "shadows": 11,
+    "clarity": -22,
+    "structure": -10,
+    "sharpen": -12,
+    "grain": 30,
+    "grain_size": 2.3,
+    "vignette": 42
+  },
+  "crop_aspect": 1.25
+}

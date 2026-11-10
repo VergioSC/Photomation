@@ -1,0 +1,15 @@
+{
+  "name": "Henri Cartier-Bresson",
+  "group": "Photographer",
+  "notes": "The decisive moment on 35mm. Honest contrast, nothing forced in the darkroom, fine grain and geometry doing the work.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "acros",
+    "contrast": 12,
+    "clarity": 8,
+    "sharpen": 10,
+    "grain": 14,
+    "vignette": 8
+  },
+  "crop_aspect": 1.5
+}

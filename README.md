@@ -116,9 +116,21 @@ out of the way, so you can take a look as a starting point and move anything
 you disagree with. Touching any slider deselects the recipe, because the result
 is no longer that recipe.
 
-Twelve are included, spanning slide film, portrait negative, cinema stock and
-four black-and-white looks. They live as JSON in `recipes/`, so adding your own
-means dropping a file in:
+Presets come in two groups:
+
+- **Film** — twelve looks spanning slide film, portrait negative, cinema stock
+  and four black-and-white stocks.
+- **Photographer** — fifteen looks built from how well-known photographers
+  actually worked: Adams' Zone System range and red-filtered skies, Moriyama's
+  blown, grainy *are-bure-boke*, Avedon's high-key white, Salgado's luminous
+  monochrome, Eggleston's dye-transfer reds, Man Ray's solarization. Several
+  carry their own crop, because the format is part of the look — Arbus is
+  square, Avedon is a tall portrait.
+
+They live as JSON in `recipes/`, so adding your own means dropping a file in.
+A preset can be written in camera terms (`settings`) or directly in this
+editor's own slider names (`adjustments`); give both and the sliders override
+the camera settings.
 
 ```json
 {
@@ -392,5 +404,6 @@ it for debugging.
 - [x] Film recipes, film simulations, grain and clarity
 - [x] Automatic adjustment and crop suggestion
 - [x] Per-photo edits, EXIF-aware limits
+- [x] Photographer-style presets
 - [ ] Selective local edits (Snapseed-style control points)
 - [ ] Deployment (Dockerfile exists, never built)

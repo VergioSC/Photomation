@@ -1,0 +1,18 @@
+{
+  "name": "Daido Moriyama",
+  "group": "Photographer",
+  "notes": "Are-bure-boke: rough, blurred, out of focus. Blown highlights, blocked blacks, heavy grain, almost no midtone left.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "monochrome",
+    "contrast": 68,
+    "highlights": 30,
+    "shadows": -46,
+    "structure": 38,
+    "clarity": 18,
+    "sharpen": -14,
+    "grain": 78,
+    "grain_size": 2.3,
+    "vignette": 22
+  }
+}

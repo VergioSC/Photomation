@@ -20,6 +20,7 @@ import zipfile
 
 import cv2
 import numpy as np
+from PIL import Image as PILImage
 from flask import Flask, Response, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
@@ -197,8 +198,28 @@ def _available_luts():
 
 @app.get("/api/keepers")
 def api_keepers():
-    """Names of the photos grading will work on (output/keep)."""
-    return jsonify({"photos": [r.name for r in keep_store.list_photos()]})
+    """Photos grading will work on, with their real shape.
+
+    The editor needs the ORIGINAL aspect to build a crop. Measuring it from
+    the preview on screen would compound, because that preview may already be
+    cropped by whatever was applied before.
+    """
+    out = []
+    for ref in keep_store.list_photos():
+        width = height = 0
+        try:
+            with PILImage.open(ref.path) as probe:   # lazy: header only
+                width, height = probe.size
+                # The stored size ignores the EXIF rotation tag, but OpenCV
+                # applies it when decoding, so a rotated photo would otherwise
+                # be reported with its width and height the wrong way round.
+                orientation = probe.getexif().get(274, 1)
+                if orientation in (5, 6, 7, 8):
+                    width, height = height, width
+        except Exception:
+            pass
+        out.append({"name": ref.name, "width": width, "height": height})
+    return jsonify({"photos": [p["name"] for p in out], "sizes": out})
 
 
 @app.get("/api/luts")
@@ -395,8 +416,10 @@ def api_recipes():
             {
                 "id": r["id"],
                 "name": r["name"],
+                "group": r["group"],
                 "notes": r["notes"],
                 "source": r["source"],
+                "crop_aspect": r["crop_aspect"],
                 "values": dataclasses.asdict(r["adjustments"]),
             }
             for r in found

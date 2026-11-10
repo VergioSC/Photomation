@@ -30,6 +30,7 @@
     /* One edit per photo, keyed by filename. An edit belongs to a photo:
        brightening a dark frame should not brighten the one next to it. */
     edits: new Map(),
+    sizes: new Map(),        // filename -> original width/height ratio
     autoOnOpen: true,
   };
 
@@ -316,15 +317,26 @@
     const data = await (await fetch("/api/recipes")).json();
     state.recipes = data.recipes;
     ui.recipeList.replaceChildren();
+    const groups = new Map();
     for (const r of data.recipes) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "recipe-btn";
-      b.textContent = r.name;
-      b.title = r.notes || r.name;
-      b.dataset.id = r.id;
-      b.addEventListener("click", () => applyRecipe(r));
-      ui.recipeList.append(b);
+      if (!groups.has(r.group)) groups.set(r.group, []);
+      groups.get(r.group).push(r);
+    }
+    for (const [groupName, items] of groups) {
+      const head = document.createElement("div");
+      head.className = "recipe-group";
+      head.textContent = groupName;
+      ui.recipeList.append(head);
+      for (const r of items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "recipe-btn";
+        b.textContent = r.name;
+        b.title = r.notes || r.name;
+        b.dataset.id = r.id;
+        b.addEventListener("click", () => applyRecipe(r));
+        ui.recipeList.append(b);
+      }
     }
     ui.badRecipes.replaceChildren();
     for (const bad of data.problems || []) {
@@ -344,6 +356,9 @@
     state.recipe = recipe.id;
     setValues(recipe.values);
     ui.recipeNote.textContent = recipe.notes || "";
+    // Some looks are inseparable from their format - Arbus is square, Avedon
+    // is a tall portrait - so a recipe may bring its own crop shape.
+    if (recipe.crop_aspect) setAspect(String(recipe.crop_aspect));
     captureEdit();
     for (const b of ui.recipeList.children) {
       b.classList.toggle("active", b.dataset.id === recipe.id);
@@ -413,10 +428,9 @@
     state.aspect = value;
     for (const b of ui.aspectRow.children) b.classList.toggle("active", b.dataset.aspect === value);
     if (!value) { state.crop = null; schedulePreview(); return; }
-    // Centre a crop of the requested shape inside the frame.
-    const img = ui.after;
-    const srcAspect = (img.naturalWidth && img.naturalHeight)
-      ? img.naturalWidth / img.naturalHeight : 1.5;
+    // Centre a crop of the requested shape inside the ORIGINAL frame. Measuring
+    // the preview instead would compound, since it may already be cropped.
+    const srcAspect = state.sizes.get(state.current) || 1.5;
     const target = Number(value);
     let w = 1, h = 1;
     if (target > srcAspect) { h = srcAspect / target; } else { w = target / srcAspect; }
@@ -558,6 +572,9 @@
     .then((r) => r.json())
     .then((d) => {
       state.photos = d.photos || [];
+      for (const s of d.sizes || []) {
+        if (s.width && s.height) state.sizes.set(s.name, s.width / s.height);
+      }
       if (!state.photos.length) return loadLuts();
       buildFilmstrip();
       ui.export.disabled = false;

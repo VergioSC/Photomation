@@ -308,6 +308,14 @@ FILM_LOOKS = {
         "curve": [(0, 0.0), (0.25, 0.23), (0.5, 0.51), (0.78, 0.83), (1, 1)],
         "monochrome": [0.2, 0.68, 0.12],      # kinder to skin
     },
+    "solarized": {
+        "label": "Solarized (darkroom)",
+        # Sabattier effect: tones rise normally, then REVERSE near the top, which
+        # is what a darkroom print does when re-exposed to light mid-development.
+        # np.interp is happy with a curve that goes back down.
+        "curve": [(0, 0.02), (0.35, 0.52), (0.62, 0.92), (0.76, 0.58), (1, 0.1)],
+        "monochrome": [0.299, 0.587, 0.114],
+    },
     "sepia": {
         "label": "Sepia",
         "curve": [(0, 0.02), (0.5, 0.5), (1, 0.98)],

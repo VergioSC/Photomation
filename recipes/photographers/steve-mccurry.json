@@ -1,0 +1,17 @@
+{
+  "name": "Steve McCurry",
+  "group": "Photographer",
+  "notes": "Vivid colour documentary. Saturated blues and reds, strong clarity, a painterly portrait look.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "velvia",
+    "saturation": 24,
+    "vibrance": 20,
+    "contrast": 21,
+    "clarity": 24,
+    "structure": 14,
+    "sharpen": 14,
+    "vignette": 18
+  },
+  "crop_aspect": 1.5
+}

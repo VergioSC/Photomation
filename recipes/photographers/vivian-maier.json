@@ -1,0 +1,15 @@
+{
+  "name": "Vivian Maier",
+  "group": "Photographer",
+  "notes": "Square Rolleiflex street work. Natural tonality, gentle contrast, the quiet observation of someone shooting for nobody.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "acros",
+    "contrast": 11,
+    "clarity": 6,
+    "shadows": 4,
+    "grain": 13,
+    "vignette": 13
+  },
+  "crop_aspect": 1.0
+}

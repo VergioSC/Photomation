@@ -1,0 +1,17 @@
+{
+  "name": "Gordon Parks",
+  "group": "Photographer",
+  "notes": "Humanist documentary in warm, dignified colour. Controlled contrast, honest skin, nothing exaggerated.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "pro-neg-std",
+    "temperature": 11,
+    "contrast": 15,
+    "shadows": 6,
+    "saturation": 9,
+    "clarity": 8,
+    "grain": 10,
+    "vignette": 11
+  },
+  "crop_aspect": 1.25
+}

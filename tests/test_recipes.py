@@ -221,6 +221,47 @@ def test_exif_reads_a_real_photo():
     assert shot.iso > 0 and shot.shutter > 0
 
 
+def test_photographer_presets_load_and_differ():
+    found, problems = recipes.load_all()
+    assert not problems, problems
+    shots = [r for r in found if r["group"] == "Photographer"]
+    assert len(shots) >= 15, len(shots)
+
+    img = np.full((60, 90, 3), 120, dtype=np.uint8)
+    img[:, 45:] = (60, 140, 200)
+    seen = {}
+    for r in shots:
+        out = edit.apply_adjustments(img, r["adjustments"])
+        key = out.tobytes()
+        assert key not in seen, f"{r['id']} renders identically to {seen.get(key)}"
+        seen[key] = r["id"]
+
+
+def test_a_recipe_may_use_editor_parameters_directly():
+    data = {"name": "x", "adjustments": {"film": "acros", "contrast": 30}}
+    adj = recipes.build_adjustments(data)
+    assert adj.film == "acros" and adj.contrast == 30
+
+
+def test_adjustments_override_camera_settings():
+    data = {"name": "x",
+            "settings": {"film_simulation": "Velvia", "color": 4},
+            "adjustments": {"saturation": -50}}
+    adj = recipes.build_adjustments(data)
+    assert adj.film == "velvia", adj.film        # kept from settings
+    assert adj.saturation == -50, adj.saturation  # overridden
+
+
+def test_solarized_look_reverses_the_highlights():
+    """Man Ray's solarization must bend back down, not just add contrast."""
+    ramp = np.tile(np.linspace(0, 255, 256, dtype=np.uint8), (4, 1))
+    ramp = cv2.merge([ramp, ramp, ramp])
+    out = edit.apply_film_look(ramp, "solarized")[0, :, 0]
+    peak = int(np.argmax(out))
+    assert 100 < peak < 220, f"peak at {peak}"
+    assert int(out[255]) < int(out[peak]) - 60, "highlights did not reverse"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

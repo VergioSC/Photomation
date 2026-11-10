@@ -12,6 +12,7 @@ Recipes live as JSON in the recipes/ folder, so you can add your own without
 touching code. Use import_recipe.py to turn a written-out recipe into one.
 """
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -147,24 +148,51 @@ def _number(value, default=0.0):
     return float(match.group(1)) if match else default
 
 
+def build_adjustments(data):
+    """Work out a recipe's Adjustments.
+
+    Two ways to write one:
+      "settings"    camera-style (Film Simulation, Highlight, Color, ...), which
+                    is how film recipes are normally written down.
+      "adjustments" this editor's own slider names, which suits looks that are
+                    described by their result rather than by camera settings.
+    Giving both starts from the settings and lets adjustments override, so a
+    recipe can borrow a camera look and then push one thing further.
+    """
+    base = to_adjustments(data.get("settings") or {})
+    overrides = data.get("adjustments")
+    if not overrides:
+        return base
+    if not isinstance(overrides, dict):
+        raise RecipeError('"adjustments" must be an object')
+    merged = {f.name: getattr(base, f.name) for f in dataclasses.fields(base)}
+    merged.update(overrides)
+    return edit.Adjustments.from_dict(merged)
+
+
 def load_all(folder=None):
     """Read every recipe JSON. Returns (recipes, problems)."""
     folder = Path(folder or RECIPES_DIR)
     if not folder.is_dir():
         return [], []
     recipes, problems = [], []
-    for path in sorted(folder.glob("*.json")):
+    for path in sorted(folder.rglob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(data, dict) or "name" not in data:
-                raise RecipeError("needs at least a \"name\" and \"settings\"")
-            adj = to_adjustments(data.get("settings") or {})
+                raise RecipeError('needs at least a "name", and "settings" or "adjustments"')
+            if not (data.get("settings") or data.get("adjustments")):
+                raise RecipeError('needs "settings" or "adjustments"')
+            adj = build_adjustments(data)
+            crop_aspect = data.get("crop_aspect")
             recipes.append({
                 "id": path.stem,
                 "name": data["name"],
+                "group": data.get("group", "Film"),
                 "notes": data.get("notes", ""),
                 "source": data.get("source", ""),
                 "settings": data.get("settings") or {},
+                "crop_aspect": float(crop_aspect) if crop_aspect else None,
                 "adjustments": adj,
             })
         except (OSError, ValueError, RecipeError) as exc:

@@ -1,0 +1,16 @@
+{
+  "name": "Dorothea Lange",
+  "group": "Photographer",
+  "notes": "Depression-era documentary. Soft daylight, restrained contrast, kind to a face.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "acros-g",
+    "contrast": 10,
+    "shadows": 9,
+    "highlights": -9,
+    "clarity": 5,
+    "grain": 16,
+    "vignette": 11
+  },
+  "crop_aspect": 1.25
+}

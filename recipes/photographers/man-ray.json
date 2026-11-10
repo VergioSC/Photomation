@@ -1,0 +1,15 @@
+{
+  "name": "Man Ray",
+  "group": "Photographer",
+  "notes": "Surrealist darkroom. Solarization reverses the brightest tones, the way a print does when re-exposed mid-development.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "solarized",
+    "contrast": 18,
+    "clarity": 12,
+    "structure": 10,
+    "grain": 16,
+    "vignette": 24
+  },
+  "crop_aspect": 1.25
+}

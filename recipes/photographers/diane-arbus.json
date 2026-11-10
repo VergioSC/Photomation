@@ -1,0 +1,17 @@
+{
+  "name": "Diane Arbus",
+  "group": "Photographer",
+  "notes": "Square format, direct flash. The subject lit hard and close while the surroundings fall away.",
+  "source": "Photomation preset",
+  "adjustments": {
+    "film": "monochrome",
+    "contrast": 30,
+    "highlights": 26,
+    "shadows": -22,
+    "structure": 18,
+    "sharpen": 12,
+    "grain": 20,
+    "vignette": 34
+  },
+  "crop_aspect": 1.0
+}
