@@ -21,12 +21,45 @@
     filmSelect: el("film-select"), resizeSelect: el("resize-select"),
     auto: el("auto"), autoCrop: el("auto-crop"), clearCrop: el("clear-crop"),
     autoNotes: el("auto-notes"), autoNotesGroup: el("auto-notes-group"),
+    shotLine: el("shot-line"), autoOpen: el("auto-open"), copyAll: el("copy-all"),
   };
 
   const state = {
     photos: [], current: null, values: {}, exporting: false,
     film: "", recipe: null, crop: null, aspect: "",
+    /* One edit per photo, keyed by filename. An edit belongs to a photo:
+       brightening a dark frame should not brighten the one next to it. */
+    edits: new Map(),
+    autoOnOpen: true,
   };
+
+  function captureEdit() {
+    if (!state.current) return;
+    state.edits.set(state.current, {
+      values: { ...state.values },
+      film: state.film,
+      crop: state.crop ? [...state.crop] : null,
+      recipe: state.recipe,
+      aspect: state.aspect,
+      touched: true,
+    });
+  }
+
+  function restoreEdit(name) {
+    const saved = state.edits.get(name);
+    if (!saved) return false;
+    setValues({ ...saved.values, film: saved.film });
+    state.crop = saved.crop ? [...saved.crop] : null;
+    state.aspect = saved.aspect || "";
+    state.recipe = saved.recipe;
+    for (const b of ui.aspectRow.children) {
+      b.classList.toggle("active", b.dataset.aspect === state.aspect);
+    }
+    for (const b of ui.recipeList.children) {
+      b.classList.toggle("active", b.dataset.id === state.recipe);
+    }
+    return true;
+  }
 
   /* ---------------- sliders ---------------- */
 
@@ -34,7 +67,8 @@
     exposure: "Exposure", contrast: "Contrast", highlights: "Highlights",
     shadows: "Shadows", temperature: "Temperature", tint: "Tint",
     vibrance: "Vibrance", saturation: "Saturation",
-    clarity: "Clarity", grain: "Grain", sharpen: "Sharpen",
+    clarity: "Clarity", structure: "Structure", grain: "Grain",
+    sharpen: "Sharpen", vignette: "Vignette",
     lut_strength: "Strength",
   };
 
@@ -71,6 +105,7 @@
         state.values[key] = Number(input.value);
         show();
         clearRecipeSelection();
+        captureEdit();
         schedulePreview();
       });
       // Double-click resets one slider, which is quicker than dragging back.
@@ -105,6 +140,10 @@
     ui.autoNotesGroup.classList.add("hidden");
     setAspect("");
     clearRecipeSelection();
+    if (state.current) state.edits.delete(state.current);
+    for (const t of ui.filmstrip.children) {
+      t.classList.toggle("edited", state.edits.has(t.dataset.name));
+    }
     schedulePreview();
   }
 
@@ -168,14 +207,38 @@
     probe.src = `/api/preview/${encodeURIComponent(state.current)}?${query(sizePx)}`;
   }
 
-  function selectPhoto(name) {
+  async function selectPhoto(name) {
+    captureEdit();                       // keep what was done to the last one
     state.current = name;
     ui.currentName.textContent = name;
     ui.before.src = `/api/preview/${encodeURIComponent(name)}?size=${fullPreviewPx()}&lut=none`;
     for (const t of ui.filmstrip.children) {
       t.classList.toggle("active", t.dataset.name === name);
     }
-    renderPreview(fullPreviewPx());
+    for (const t of ui.filmstrip.children) {
+      t.classList.toggle("edited", state.edits.has(t.dataset.name));
+    }
+
+    if (restoreEdit(name)) {
+      renderPreview(fullPreviewPx());
+      return;
+    }
+    // First time opening this photo: start from a clean slate, then let auto
+    // have a go, which is what "auto adjust the photos" should mean.
+    resetValuesOnly();
+    renderPreview(DRAFT_PX);
+    if (state.autoOnOpen) await runAuto(false, true);
+    else renderPreview(fullPreviewPx());
+  }
+
+  function resetValuesOnly() {
+    for (const row of document.querySelectorAll(".slider-row")) row._reset();
+    state.film = "";
+    state.crop = null;
+    state.aspect = "";
+    ui.filmSelect.value = "";
+    clearRecipeSelection();
+    for (const b of ui.aspectRow.children) b.classList.toggle("active", b.dataset.aspect === "");
   }
 
   function buildFilmstrip() {
@@ -281,6 +344,7 @@
     state.recipe = recipe.id;
     setValues(recipe.values);
     ui.recipeNote.textContent = recipe.notes || "";
+    captureEdit();
     for (const b of ui.recipeList.children) {
       b.classList.toggle("active", b.dataset.id === recipe.id);
     }
@@ -307,7 +371,7 @@
 
   /* ---------------- auto ---------------- */
 
-  async function runAuto(withCrop) {
+  async function runAuto(withCrop, quiet) {
     if (!state.current) return;
     const params = new URLSearchParams({ crop: withCrop ? "1" : "0" });
     if (withCrop && state.aspect) params.set("aspect", state.aspect);
@@ -331,8 +395,10 @@
         ui.autoNotes.append(li);
       }
       ui.autoNotesGroup.classList.toggle("hidden", !data.notes.length);
-      schedulePreview();
-      toast("Auto adjusted. Every slider is still yours to change.");
+      if (data.shot) ui.shotLine.textContent = data.shot;
+      captureEdit();
+      renderPreview(fullPreviewPx());
+      if (!quiet) toast("Auto adjusted. Every slider is still yours to change.");
     } catch (err) {
       toast(`Auto failed: ${err.message}`);
     } finally {
@@ -355,46 +421,101 @@
     let w = 1, h = 1;
     if (target > srcAspect) { h = srcAspect / target; } else { w = target / srcAspect; }
     state.crop = [(1 - w) / 2, (1 - h) / 2, w, h];
+    captureEdit();
     schedulePreview();
   }
 
   /* ---------------- export ---------------- */
 
-  function exportAll() {
+  function currentEditPayload() {
+    captureEdit();
+    const out = {};
+    for (const [name, e] of state.edits) {
+      const entry = { ...e.values, film: e.film || "" };
+      if (e.crop) {
+        entry.crop_x = e.crop[0]; entry.crop_y = e.crop[1];
+        entry.crop_w = e.crop[2]; entry.crop_h = e.crop[3];
+      }
+      out[name] = entry;
+    }
+    return out;
+  }
+
+  async function exportAll() {
     if (state.exporting) return;
     state.exporting = true;
     ui.export.disabled = true;
     ui.progress.classList.remove("hidden");
-    ui.label.textContent = "Exporting…";
+    ui.label.textContent = "Exporting\u2026";
     ui.fill.style.width = "0%";
 
-    let total = 0, failed = 0;
-    const source = new EventSource(`/api/grade?${query(0)}&resize=${ui.resizeSelect.value}`);
-    source.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "start") {
-        total = msg.total;
-        ui.count.textContent = `0 / ${total}`;
-      } else if (msg.type === "photo" || msg.type === "skipped") {
-        if (msg.type === "skipped") failed += 1;
-        ui.count.textContent = `${msg.index} / ${total}`;
-        ui.fill.style.width = `${(msg.index / total) * 100}%`;
-      } else if (msg.type === "done") {
-        source.close();
-        state.exporting = false;
-        ui.export.disabled = false;
-        ui.label.textContent = "Done";
-        toast(failed ? `Exported ${total - failed} of ${total}; ${failed} failed`
-                     : `Exported ${total} photo${total === 1 ? "" : "s"}. Use Download zip.`);
-        setTimeout(() => ui.progress.classList.add("hidden"), 1600);
+    let total = 0, failed = 0, autoed = 0;
+    try {
+      // EventSource can only GET, and the edits are too big for a URL, so the
+      // stream is read off a POST instead.
+      const response = await fetch("/api/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          edits: currentEditPayload(),
+          lut: ui.select.value || "none",
+          resize: Number(ui.resizeSelect.value) || 0,
+          auto_fill: state.autoOnOpen,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `export failed (${response.status})`);
       }
-    };
-    source.onerror = () => {
-      source.close();
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const msg = JSON.parse(line.slice(6));
+          if (msg.type === "start") {
+            total = msg.total;
+            ui.count.textContent = `0 / ${total}`;
+          } else if (msg.type === "photo" || msg.type === "skipped") {
+            if (msg.type === "skipped") failed += 1;
+            if (msg.edit === "auto") autoed += 1;
+            ui.count.textContent = `${msg.index} / ${total}`;
+            ui.fill.style.width = `${(msg.index / total) * 100}%`;
+          } else if (msg.type === "done") {
+            ui.label.textContent = "Done";
+          }
+        }
+      }
+      const extra = autoed ? `, ${autoed} auto-adjusted for you` : "";
+      toast(failed ? `Exported ${total - failed} of ${total}; ${failed} failed`
+                   : `Exported ${total} photo${total === 1 ? "" : "s"}${extra}.`);
+    } catch (err) {
+      ui.label.textContent = "Export failed";
+      toast(`Export failed: ${err.message}`);
+    } finally {
       state.exporting = false;
       ui.export.disabled = false;
-      ui.label.textContent = "Export failed — is the server still running?";
-    };
+      setTimeout(() => ui.progress.classList.add("hidden"), 1600);
+    }
+  }
+
+  /* Give every photo the edit that is on screen now. */
+  function copyToAll() {
+    captureEdit();
+    const mine = state.edits.get(state.current);
+    if (!mine) return;
+    for (const name of state.photos) {
+      state.edits.set(name, { ...mine, crop: mine.crop ? [...mine.crop] : null });
+    }
+    for (const t of ui.filmstrip.children) t.classList.add("edited");
+    toast(`That edit now applies to all ${state.photos.length} photos.`);
   }
 
   function toast(message) {
@@ -422,10 +543,13 @@
   ui.filmSelect.addEventListener("change", () => {
     state.film = ui.filmSelect.value;
     clearRecipeSelection();
+    captureEdit();
     schedulePreview();
   });
   ui.auto.addEventListener("click", () => runAuto(false));
-  ui.autoCrop.addEventListener("click", () => runAuto(true));
+  ui.copyAll.addEventListener("click", copyToAll);
+  ui.autoOpen.addEventListener("change", () => { state.autoOnOpen = ui.autoOpen.checked; });
+  ui.autoCrop.addEventListener("click", () => runAuto(true, false));
   ui.clearCrop.addEventListener("click", () => setAspect(""));
 
   buildSliders();

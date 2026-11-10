@@ -140,7 +140,7 @@ def test_auto_adds_contrast_only_to_a_flat_photo():
 def test_auto_crop_keeps_most_of_the_frame_and_fits_inside_it():
     img = _scene(120)
     img[30:70, 150:210] = 255                     # a detailed corner
-    _, rect, _ = auto.analyse(img, want_crop=True)
+    _, rect, _, _ = auto.analyse(img, want_crop=True)
     x, y, w, h = rect
     assert 0 <= x and 0 <= y and x + w <= 1.0001 and y + h <= 1.0001, rect
     assert w * h > 0.6, f"crop threw away too much: {w * h:.2f}"
@@ -148,7 +148,7 @@ def test_auto_crop_keeps_most_of_the_frame_and_fits_inside_it():
 
 def test_auto_crop_respects_a_requested_aspect():
     img = _scene(120)
-    _, rect, _ = auto.analyse(img, want_crop=True, aspect=1.0)
+    _, rect, _, _ = auto.analyse(img, want_crop=True, aspect=1.0)
     _, _, w, h = rect
     got = (w * img.shape[1]) / (h * img.shape[0])
     assert abs(got - 1.0) < 0.02, f"asked for 1:1, got {got:.3f}"
@@ -158,6 +158,67 @@ def test_crop_image_returns_the_requested_region():
     img = np.zeros((100, 200, 3), dtype=np.uint8)
     out = edit.crop_image(img, (0.25, 0.5, 0.5, 0.5))
     assert out.shape[:2] == (50, 100), out.shape
+
+
+
+# --------------------------------------------------- photographic judgement
+
+
+def test_high_iso_limits_shadow_lifting():
+    """A noisy capture must not be pushed like a clean one."""
+    import exif
+    dark = _scene(35)
+    clean = auto.judge(dark, exif.Shot(iso=200, shutter=1/250, aperture=8, focal_35mm=35))
+    noisy = auto.judge(dark, exif.Shot(iso=12800, shutter=1/250, aperture=8, focal_35mm=35))
+    assert noisy.max_shadow_lift < clean.max_shadow_lift, \
+        (noisy.max_shadow_lift, clean.max_shadow_lift)
+
+
+def test_blown_highlights_stop_recovery_being_attempted():
+    """White with nothing under it cannot be recovered, only greyed."""
+    blown = np.full((120, 160, 3), 120, dtype=np.uint8)
+    blown[:, :60] = 255                       # a big, fully clipped area
+    limits = auto.judge(blown)
+    assert limits.max_highlight_pull < 25, limits.max_highlight_pull
+    assert any("blown" in v for v in limits.verdicts), limits.verdicts
+
+
+def test_shake_risk_holds_sharpening_back():
+    """Sharpening motion blur makes it crunchy, not sharp."""
+    import exif
+    img = _scene(120)
+    steady = auto.judge(img, exif.Shot(iso=200, shutter=1/500, focal_35mm=50))
+    shaky = auto.judge(img, exif.Shot(iso=200, shutter=1/15, focal_35mm=50))
+    assert shaky.max_sharpen < steady.max_sharpen, (shaky.max_sharpen, steady.max_sharpen)
+    assert any("shake" in v for v in shaky.verdicts), shaky.verdicts
+
+
+def test_exposure_compensation_is_respected():
+    """A photographer who dialled -1 stop meant the photo to be dark."""
+    import exif
+    dark = _scene(45)
+    plain = auto.analyse(dark, shot=exif.Shot(iso=200))[0]
+    chosen = auto.analyse(dark, shot=exif.Shot(iso=200, exposure_bias=-1.0))[0]
+    assert abs(chosen.exposure) < abs(plain.exposure), (chosen.exposure, plain.exposure)
+
+
+def test_limits_actually_bind_the_result():
+    import exif
+    dark = _scene(30)
+    adj, _, _, limits = auto.analyse(dark, shot=exif.Shot(iso=25600))
+    assert adj.shadows <= limits.max_shadow_lift + 0.01, (adj.shadows, limits.max_shadow_lift)
+    assert limits.exposure_floor <= adj.exposure <= limits.exposure_ceiling
+
+
+def test_exif_reads_a_real_photo():
+    import exif
+    from pathlib import Path as _P
+    photos = sorted(_P("input").glob("*.JPG")) if _P("input").is_dir() else []
+    if not photos:
+        return                      # nothing to read; not a failure
+    shot = exif.read(photos[0])
+    assert shot.known, "no exposure data found in a camera JPEG"
+    assert shot.iso > 0 and shot.shutter > 0
 
 
 if __name__ == "__main__":

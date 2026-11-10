@@ -424,3 +424,11 @@ input[type="number"]:focus { outline: none; border-color: var(--accent); border-
 
 .auto-notes { margin: 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
 .auto-notes li { font-size: 13px; color: var(--ink-secondary); }
+
+/* A photo that already carries an edit of its own. */
+.frame.edited::after {
+  content: ""; position: absolute; top: 4px; right: 4px;
+  width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--accent);
+}
+.frame { position: relative; }
+#shot-line { color: var(--ink-muted); }

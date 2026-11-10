@@ -34,6 +34,8 @@ class Adjustments:
     vibrance: float = 0.0      # -100 .. +100, spares already-saturated colour
     saturation: float = 0.0    # -100 greyscale .. +100
     clarity: float = 0.0       # -100 soften .. +100 punchy midtone contrast
+    structure: float = 0.0     # -100 .. +100 fine detail contrast
+    vignette: float = 0.0      # -100 brighter corners .. +100 darker corners
     grain: float = 0.0         # 0 .. 100 film grain
     grain_size: float = 1.0    # 1 = fine, 2 = coarse
     sharpen: float = 0.0       # -100 soften .. +100 sharpen
@@ -115,6 +117,8 @@ def apply_adjustments(image_bgr, adj, lut=None):
 
     if adj.clarity:
         out = _clarity(out, adj.clarity)
+    if adj.structure:
+        out = _structure(out, adj.structure)
 
     if adj.vibrance or adj.saturation:
         x = out.astype(np.float32) / 255.0
@@ -132,6 +136,8 @@ def apply_adjustments(image_bgr, adj, lut=None):
 
     if adj.sharpen:
         out = _sharpen(out, adj.sharpen)
+    if adj.vignette:
+        out = _vignette(out, adj.vignette)
     # Grain last: anything after it would smear or sharpen the grain itself.
     if adj.grain > 0:
         out = _grain(out, adj.grain, adj.grain_size)
@@ -417,3 +423,34 @@ def crop_image(image_bgr, rect):
     right = max(left + 1, min(width, int(round((x + w) * width))))
     bottom = max(top + 1, min(height, int(round((y + h) * height))))
     return image_bgr[top:bottom, left:right]
+
+
+def _structure(image_bgr, amount):
+    """Fine-detail contrast: like clarity, but at the scale of texture.
+
+    Clarity uses a wide radius and shapes volume. Structure uses a small one
+    and brings out surface - fabric, brick, foliage - without the edge halos
+    that sharpening at this strength would give.
+    """
+    strength = amount / 100.0
+    lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+    L = lab[:, :, 0].astype(np.float32)
+    detail = L - cv2.GaussianBlur(L, (0, 0), sigmaX=2.5)
+    lab[:, :, 0] = np.clip(L + detail * strength * 1.4, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+def _vignette(image_bgr, amount):
+    """Darken or lighten the corners.
+
+    The falloff is measured from the centre as a share of the half-diagonal, so
+    it stays circular on any aspect ratio instead of stretching with the frame.
+    """
+    strength = amount / 100.0
+    height, width = image_bgr.shape[:2]
+    ys = (np.arange(height, dtype=np.float32) - (height - 1) / 2.0) / max(height / 2.0, 1)
+    xs = (np.arange(width, dtype=np.float32) - (width - 1) / 2.0) / max(width / 2.0, 1)
+    radius = np.sqrt(xs[None, :] ** 2 + ys[:, None] ** 2) / np.sqrt(2.0)
+    falloff = np.clip(radius, 0.0, 1.0) ** 2
+    gain = 1.0 - falloff * strength * 0.85
+    return np.clip(image_bgr.astype(np.float32) * gain[:, :, None], 0, 255).astype(np.uint8)

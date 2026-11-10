@@ -19,10 +19,13 @@ Every result is a suggestion that lands in the sliders, so you can take it as
 a starting point and move anything you disagree with.
 """
 
+from dataclasses import dataclass, field
+
 import cv2
 import numpy as np
 
 import edit
+import exif
 
 # A normal midtone. Most photographs look right with the median here.
 TARGET_MEDIAN = 0.46
@@ -43,33 +46,51 @@ MAX_TONE = 45.0
 # hair and clothing carry far more detail than a backdrop.
 
 
-def analyse(image_bgr, want_crop=False, aspect=None):
+def analyse(image_bgr, want_crop=False, aspect=None, shot=None):
     """Return (Adjustments, crop_rect_or_None, notes).
 
     crop_rect is (x, y, w, h) in 0..1. notes explains each decision in plain
     words, so the numbers are not a black box.
+
+    Every value is held inside what `judge` says this photo will tolerate, so
+    a noisy ISO 10000 frame is not pushed like a clean ISO 200 one.
     """
     # Work on a small copy: these are statistics, and full resolution adds
     # nothing but time.
     work = _downscale(image_bgr, 900)
-    notes = []
+    limits = judge(work, shot)
+    notes = list(limits.verdicts)
 
     temperature, tint = _auto_white_balance(work, notes)
     exposure = _auto_exposure(work, notes)
     contrast = _auto_contrast(work, notes)
     shadows, highlights = _auto_tone(work, notes)
 
+    # Apply the photographic limits, and say so when one actually bites.
+    exposure_held = float(np.clip(exposure, limits.exposure_floor, limits.exposure_ceiling))
+    if abs(exposure_held - exposure) > 0.01:
+        notes.append(f"Exposure held to {exposure_held:+.2f} stops rather than "
+                     f"{exposure:+.2f}, for the reason above.")
+    shadows_held = min(shadows, limits.max_shadow_lift)
+    if shadows_held < shadows - 0.5:
+        notes.append(f"Shadow lift held to {shadows_held:.0f} instead of {shadows:.0f} "
+                     f"to keep noise down.")
+    highlights_held = max(highlights, -limits.max_highlight_pull)
+    if highlights_held > highlights + 0.5:
+        notes.append(f"Highlight recovery held to {abs(highlights_held):.0f}: there is "
+                     f"nothing left under the clipped areas.")
+
     adj = edit.Adjustments(
         temperature=temperature,
         tint=tint,
-        exposure=exposure,
+        exposure=round(exposure_held, 2),
         contrast=contrast,
-        shadows=shadows,
-        highlights=highlights,
+        shadows=round(shadows_held, 1),
+        highlights=round(highlights_held, 1),
     )
 
     rect = _auto_crop(work, aspect, notes) if want_crop else None
-    return adj, rect, notes
+    return adj, rect, notes, limits
 
 
 def _downscale(image, longest):
@@ -227,3 +248,103 @@ def _auto_crop(image, aspect, notes):
     rect = (place(cx, crop_w), place(cy, crop_h), crop_w, crop_h)
     notes.append(f"Crop keeps {crop_w * crop_h * 100:.0f}% of the frame.")
     return rect
+
+# ----------------------------------------------------------------- judgement
+#
+# Rules a photographer applies before touching a slider. They decide what is
+# worth attempting on a given photo, using the exposure triangle recorded by
+# the camera plus what the pixels themselves show.
+
+
+@dataclass
+class Limits:
+    """How far this particular photo can be pushed, and why."""
+
+    max_shadow_lift: float = 55.0
+    max_highlight_pull: float = 55.0
+    max_sharpen: float = 60.0
+    max_clarity: float = 60.0
+    exposure_floor: float = -1.2
+    exposure_ceiling: float = 1.2
+    verdicts: list = field(default_factory=list)
+
+    def note(self, text):
+        self.verdicts.append(text)
+
+
+# ISO bands and what each costs in noise. Lifting shadows amplifies whatever
+# noise is already there, so the dirtier the capture the less room there is.
+ISO_BUDGET = [
+    (800, 55.0, 60.0, "Low ISO: clean file, plenty of room to lift shadows."),
+    (3200, 38.0, 42.0, "Moderate ISO: some noise, so shadows are lifted with care."),
+    (12800, 22.0, 25.0, "High ISO: noise limits how far shadows and detail can be pushed."),
+    (float("inf"), 12.0, 14.0, "Very high ISO: heavy noise, so only gentle moves are safe."),
+]
+
+
+def judge(image_bgr, shot=None):
+    """Decide what this photo will tolerate. Returns Limits with plain reasons."""
+    limits = Limits()
+    shot = shot or exif.Shot()
+
+    x = image_bgr.astype(np.float32) / 255.0
+    luma = np.sum(x * edit.LUMA_BGR, axis=2)
+
+    # Clipped means every channel is at the top: there is no information left
+    # under it, so "recovering" highlights only turns white into grey.
+    clipped = float((image_bgr.min(axis=2) >= 250).mean())
+    crushed = float((image_bgr.max(axis=2) <= 6).mean())
+
+    if clipped > 0.02:
+        limits.max_highlight_pull = 18.0
+        limits.exposure_ceiling = min(limits.exposure_ceiling, 0.25)
+        limits.note(f"{clipped * 100:.1f}% of the frame is fully blown. That detail is "
+                    f"gone for good, so highlights are only eased, not chased.")
+    elif clipped > 0.005:
+        limits.max_highlight_pull = 35.0
+        limits.note(f"{clipped * 100:.1f}% is clipped white: a little, so highlights are "
+                    f"pulled gently.")
+
+    if crushed > 0.04:
+        limits.note(f"{crushed * 100:.1f}% is solid black. Some of that will not come "
+                    f"back; lifting it mostly reveals noise.")
+
+    if clipped > 0.01 and crushed > 0.04:
+        limits.note("The scene was brighter than the sensor could hold end to end. "
+                    "Highlights are protected first, because they cannot be rebuilt.")
+
+    if shot.known:
+        limits.note(f"Shot at {shot.summary()}.")
+
+    if shot.iso:
+        for ceiling, shadow_cap, detail_cap, reason in ISO_BUDGET:
+            if shot.iso <= ceiling:
+                limits.max_shadow_lift = min(limits.max_shadow_lift, shadow_cap)
+                limits.max_clarity = min(limits.max_clarity, detail_cap)
+                limits.max_sharpen = min(limits.max_sharpen, detail_cap)
+                limits.note(f"ISO {shot.iso}. {reason}")
+                break
+
+    # Camera shake: sharpening motion blur does not recover detail, it just
+    # makes the smear crunchy.
+    if shot.shutter and shot.shake_limit and shot.shutter > shot.shake_limit:
+        limits.max_sharpen = min(limits.max_sharpen, 15.0)
+        limits.note(f"{shot.shutter_text()} hand-held at {round(shot.focal_35mm or shot.focal_length)}mm "
+                    f"is below the 1/focal-length rule, so some shake is likely. "
+                    f"Sharpening is held back; it cannot undo movement.")
+
+    if shot.aperture and shot.aperture <= 2.8:
+        limits.note(f"f/{shot.aperture:g} is wide, so a soft background is probably "
+                    f"deliberate rather than a mistake.")
+
+    # A photographer who dialled in compensation meant it.
+    if abs(shot.exposure_bias) >= 0.3:
+        direction = "brighter" if shot.exposure_bias > 0 else "darker"
+        limits.exposure_floor *= 0.5
+        limits.exposure_ceiling *= 0.5
+        limits.note(f"You dialled {shot.exposure_bias:+.1f} stops to make it {direction}. "
+                    f"That choice is respected, so exposure is barely moved.")
+
+    if not limits.verdicts:
+        limits.note("Nothing unusual: the file has normal latitude.")
+    return limits

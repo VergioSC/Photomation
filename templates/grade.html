@@ -13,6 +13,7 @@
       </div>
       <div style="margin-left:auto; display:flex; gap:var(--s3); flex-wrap:wrap">
         <button class="btn btn-secondary btn-small" id="auto">Auto adjust</button>
+        <button class="btn btn-secondary btn-small" id="copy-all">Copy to all</button>
         <button class="btn btn-secondary btn-small" id="reset">Reset edits</button>
         <a class="btn btn-secondary btn-small" id="download" href="/api/download/graded">Download zip</a>
         <button class="btn btn-small" id="export" disabled>Export all</button>
@@ -41,7 +42,12 @@
           </div>
           <div class="stage-bar">
             <span class="caption mono" id="current-name">—</span>
+            <span class="caption" id="shot-line"></span>
             <label class="toggle" style="margin-left:auto">
+              <input type="checkbox" id="auto-open" checked>
+              <span>Auto on open</span>
+            </label>
+            <label class="toggle">
               <input type="checkbox" id="compare">
               <span>Compare</span>
             </label>
@@ -114,7 +120,9 @@
             <div class="group-title">Detail</div>
             <div class="slider-row" data-key="clarity" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
             <div class="slider-row" data-key="sharpen" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="structure" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
             <div class="slider-row" data-key="grain" data-min="0" data-max="100" data-step="1" data-default="0"></div>
+            <div class="slider-row" data-key="vignette" data-min="-100" data-max="100" data-step="1" data-default="0"></div>
           </div>
 
           <div class="control-group">
@@ -132,13 +140,14 @@
           </div>
 
           <div class="control-group hidden" id="auto-notes-group">
-            <div class="group-title">What auto did</div>
+            <div class="group-title">What auto decided, and why</div>
             <ul class="auto-notes" id="auto-notes"></ul>
           </div>
 
           <p class="caption">
-            Double-click any slider to reset it. Edits apply to every kept photo
-            on export.
+            Each photo keeps its own edit. Double-click a slider to reset it,
+            or use Copy to all to give every photo this one. Photos you never
+            open are auto-adjusted on export while "Auto on open" is ticked.
           </p>
         </section>
       </div>

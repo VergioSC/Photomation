@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 import config
 import cull
 import auto as auto_module
+import exif as exif_module
 import edit as edit_module
 import lut as lut_module
 import recipes as recipes_module
@@ -223,6 +224,18 @@ def _preview_step(asked):
     return config.PREVIEW_STEPS[-1]
 
 
+def _crop_from_dict(data):
+    """Read a crop rectangle out of a JSON edit, or None."""
+    try:
+        rect = tuple(float(data[k]) for k in ("crop_x", "crop_y", "crop_w", "crop_h"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    x, y, w, h = rect
+    if w <= 0 or h <= 0 or w > 1 or h > 1:
+        return None
+    return (max(0.0, min(1.0, x)), max(0.0, min(1.0, y)), w, h)
+
+
 def _crop_from_args(args):
     """Read a crop rectangle off a query string, or None."""
     try:
@@ -296,18 +309,39 @@ def api_preview(name):
                     headers={"Cache-Control": "no-store"})
 
 
-@app.get("/api/grade")
+@app.post("/api/grade")
 def api_grade():
-    """Render every kept photo at full resolution, streaming progress."""
-    table, error = _lut_from_args(request.args)
+    """Render every kept photo at full resolution, streaming progress.
+
+    The body carries one edit per photo, because an edit belongs to a photo:
+
+        {"edits": {"DSC_1.JPG": {"exposure": 0.5, "film": "velvia", ...}},
+         "lut": "none", "resize": 0, "auto_fill": true}
+
+    A photo with no edit of its own is analysed and auto-adjusted on the way
+    past when auto_fill is set, so photos you never opened still come out
+    sensibly rather than untouched.
+    """
+    body = request.get_json(silent=True) or {}
+    edits = body.get("edits") or {}
+    if not isinstance(edits, dict):
+        return jsonify({"error": "edits must be an object keyed by filename"}), 400
+
+    lut_name = str(body.get("lut", "none"))
+    try:
+        table, error = _load_lut_or_400(lut_name) if lut_name not in ("", "none") else (None, None)
+    except lut_module.CubeError as exc:
+        return jsonify({"error": str(exc)}), 422
     if error is not None:
         return error
-    adj = _adjustments_from_args(request.args)
-    crop = _crop_from_args(request.args)
+
     try:
-        resize_to = int(float(request.args.get("resize", 0)))
-    except ValueError:
+        resize_to = int(float(body.get("resize", 0)))
+    except (TypeError, ValueError):
         resize_to = 0
+    auto_fill = bool(body.get("auto_fill", True))
+
+    refs = keep_store.list_photos()
     graded_dir = config.OUTPUT_DIR / "graded"
 
     def generate():
@@ -317,6 +351,18 @@ def api_grade():
             try:
                 # Full resolution: an exported photo is the deliverable.
                 image, _ = cull.load_image(ref.path, reduced=False)
+
+                own = edits.get(ref.name)
+                if own is None and auto_fill:
+                    adj, _, _, _ = auto_module.analyse(
+                        image, shot=exif_module.read(ref.path))
+                    crop = None
+                    source = "auto"
+                else:
+                    adj = edit_module.Adjustments.from_dict(own or {})
+                    crop = _crop_from_dict(own or {})
+                    source = "yours" if own else "untouched"
+
                 image = edit_module.crop_image(image, crop)
                 out = edit_module.apply_adjustments(image, adj, table)
                 if resize_to:
@@ -329,7 +375,7 @@ def api_grade():
                 if not cv2.imwrite(str(target), out, [cv2.IMWRITE_JPEG_QUALITY, 95]):
                     raise cull.LoadError("could not write the edited file")
                 payload = {"type": "photo", "index": index, "name": ref.name,
-                           "out": target.name}
+                           "out": target.name, "edit": source}
             except (cull.LoadError, lut_module.CubeError) as exc:
                 payload = {"type": "skipped", "index": index, "name": ref.name,
                            "reason": str(exc)}
@@ -391,11 +437,21 @@ def api_auto(name):
     if image is None:
         return jsonify({"error": "could not decode the photo"}), 422
 
-    adj, rect, notes = auto_module.analyse(image, want_crop=want_crop, aspect=aspect)
+    shot = exif_module.read(ref.path)
+    adj, rect, notes, limits = auto_module.analyse(
+        image, want_crop=want_crop, aspect=aspect, shot=shot)
     return jsonify({
         "values": dataclasses.asdict(adj),
         "crop": list(rect) if rect else None,
         "notes": notes,
+        "shot": shot.summary(),
+        "camera": shot.camera,
+        "limits": {
+            "max_shadow_lift": limits.max_shadow_lift,
+            "max_highlight_pull": limits.max_highlight_pull,
+            "max_sharpen": limits.max_sharpen,
+            "max_clarity": limits.max_clarity,
+        },
     })
 
 

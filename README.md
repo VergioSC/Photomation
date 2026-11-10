@@ -106,7 +106,7 @@ sliders, and the preview updates live:
 | Look | Film simulation, LUT, and how strongly to mix the LUT in |
 | Light | Exposure (EV), contrast, highlights, shadows |
 | Colour | Temperature, tint, vibrance, saturation |
-| Detail | Clarity, sharpen, grain |
+| Detail | Clarity, sharpen, structure, grain, vignette |
 | Export | Resize the longest side, or keep the original |
 
 ### Film recipes
@@ -162,11 +162,41 @@ channel mixer, a tone curve and a saturation setting, with the monochrome ones
 using their own channel weights (which is what gives different black-and-white
 films their different skies and skin tones).
 
+### Every photo keeps its own edit
+
+Opening a photo in the filmstrip loads that photo's edit. Change a slider and
+it belongs to that photo only; a blue dot on the thumbnail marks the ones that
+carry an edit. **Copy to all** gives every photo the edit currently on screen.
+
+On export, photos you never opened are auto-adjusted on the way past (while
+**Auto on open** is ticked), so a whole shoot comes out sensibly rather than
+untouched. The summary tells you how many were handled that way.
+
 ### Auto adjust
 
-**Auto adjust** analyses the photo and fills in the Light and Colour sliders.
-**Auto crop** also suggests a crop. Both then leave everything adjustable, and
-the panel lists what it did and why, so the numbers are not a black box.
+**Auto adjust** analyses the photo and fills in the Light and Colour sliders;
+with **Auto on open** ticked it runs by itself each time you open a photo.
+**Auto crop** also suggests a crop. Both leave everything adjustable, and the
+panel lists what it did and why, so the numbers are not a black box.
+
+### Thinking like a photographer
+
+Before any slider moves, the photo is judged against what it will actually
+tolerate, using the **exposure triangle** the camera recorded — aperture,
+shutter speed and ISO — together with what the pixels show. That decides what
+is worth attempting:
+
+| What it reads | What it concludes |
+|---|---|
+| ISO | Lifting shadows amplifies noise. ISO 400 gets full latitude; ISO 10000 is capped to a fraction of it. |
+| Clipped highlights | Pure white has nothing underneath. Recovery is capped and the photo is not brightened further, because chasing blown highlights only turns white into grey. |
+| Shutter vs focal length | Below the 1/focal-length rule, camera shake is likely. Sharpening is held back: it cannot undo movement, only make the smear crunchy. |
+| Aperture | A wide aperture means a soft background is probably deliberate, not a fault. |
+| Exposure compensation | If you dialled in ±⅔ of a stop, you meant it, so auto exposure barely moves. |
+
+Each decision is reported in plain words, and when a limit actually bites it
+says so: *"Shadows lifted 45: 32.7% of the frame was crushed to black"*,
+then *"Shadow lift held to 22 instead of 45 to keep noise down."*
 
 This is image analysis, not a neural network, and nothing leaves your machine:
 
@@ -294,7 +324,8 @@ abort the run.
 cull.py            scoring + CLI culling
 lut.py             .cube parser and trilinear interpolation
 edit.py            exposure, white balance, tone, colour, film looks, grain, crop
-auto.py            automatic analysis: white balance, exposure, tone, crop
+auto.py            automatic analysis and photographic judgement
+exif.py            reads the exposure triangle from a photo
 recipes.py         film recipe presets and the recipe importer
 import_recipe.py   CLI: turn a written-out recipe into a preset
 recipes/           preset JSON files
@@ -360,4 +391,6 @@ it for debugging.
 - [x] Exposure, white balance, tone and colour controls
 - [x] Film recipes, film simulations, grain and clarity
 - [x] Automatic adjustment and crop suggestion
+- [x] Per-photo edits, EXIF-aware limits
+- [ ] Selective local edits (Snapseed-style control points)
 - [ ] Deployment (Dockerfile exists, never built)
