@@ -22,6 +22,23 @@ import config
 import cull
 
 
+def trash_file(path, output_dir):
+    """Move a file into output/.trash instead of deleting it.
+
+    A name already in the trash gets a counter rather than being overwritten,
+    so two runs cannot silently destroy the older copy.
+    """
+    trash = Path(output_dir) / ".trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    target = trash / path.name
+    counter = 1
+    while target.exists():
+        target = trash / f"{path.stem}-{counter}{path.suffix}"
+        counter += 1
+    path.rename(target)
+    return target
+
+
 @dataclass(frozen=True)
 class PhotoRef:
     """A photo we can score, identified by a name that is safe to put in a URL."""
@@ -122,21 +139,23 @@ class LocalStorage:
         return data
 
     def clear_bucket(self, bucket):
-        """Delete previous copies from output/<bucket>/ before a fresh apply.
+        """Clear output/<bucket>/ before a fresh apply.
 
         Without this, re-applying at a new threshold leaves the old copy behind
         and a photo that changed side ends up in BOTH keep/ and reject/.
-        Only photo files are removed, so anything else you keep in there stays.
+
+        Photos are MOVED to output/.trash, never deleted. These folders look
+        like a safe place to drop a favourite, and they are not ours to erase.
         """
         folder = self.output_dir / bucket
         if not folder.is_dir():
             return 0
-        removed = 0
-        for path in folder.iterdir():
+        moved = 0
+        for path in sorted(folder.iterdir()):
             if path.is_file() and path.suffix.lower() in cull.EXTENSIONS:
-                path.unlink()
-                removed += 1
-        return removed
+                trash_file(path, self.output_dir)
+                moved += 1
+        return moved
 
     def copy_to_bucket(self, ref, bucket):
         """Copy the ORIGINAL file into output/<bucket>/. Never moves or deletes."""

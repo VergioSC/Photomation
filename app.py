@@ -32,6 +32,7 @@ import edit as edit_module
 import lut as lut_module
 import masks as masks_module
 import recipes as recipes_module
+import storage as storage_module
 from storage import LocalStorage
 
 app = Flask(__name__)
@@ -110,12 +111,18 @@ def api_scan():
 
 @app.get("/api/thumb/<path:name>")
 def api_thumb(name):
-    """Serve a cached thumbnail. `name` is untrusted, so it is resolved by lookup."""
-    ref = store.resolve(name)
+    """Serve a cached thumbnail. `name` is untrusted, so it is resolved by lookup.
+
+    `from` picks the folder, the same way the preview route does. The editor
+    works on output/keep, so asking input/ for its thumbnails broke every
+    filmstrip image as soon as input/ was cleared for the next shoot.
+    """
+    picker = keep_store if request.args.get("from") == "keep" else store
+    ref = picker.resolve(name)
     if ref is None:
         return jsonify({"error": "not found"}), 404
     try:
-        data = store.scaled_bytes(ref)
+        data = picker.scaled_bytes(ref)
     except cull.LoadError as exc:
         return jsonify({"error": str(exc)}), 422
     return Response(
@@ -378,6 +385,11 @@ def api_grade():
     def generate():
         yield _sse({"type": "start", "total": len(refs)})
         graded_dir.mkdir(parents=True, exist_ok=True)
+        # Clear the previous export first, or a photo you have since rejected
+        # stays in the folder and ships with the zip.
+        for stale in sorted(graded_dir.iterdir()):
+            if stale.is_file() and stale.suffix.lower() in cull.EXTENSIONS:
+                storage_module.trash_file(stale, config.OUTPUT_DIR)
         for index, ref in enumerate(refs, start=1):
             try:
                 # Full resolution: an exported photo is the deliverable.
@@ -535,14 +547,7 @@ def api_remove(name):
     ref = store.resolve(name)
     if ref is None:
         return jsonify({"error": "not found"}), 404
-    trash = config.OUTPUT_DIR / ".trash"
-    trash.mkdir(parents=True, exist_ok=True)
-    target = trash / ref.name
-    counter = 1
-    while target.exists():
-        target = trash / f"{target.stem}-{counter}{target.suffix}"
-        counter += 1
-    ref.path.rename(target)
+    target = storage_module.trash_file(ref.path, config.OUTPUT_DIR)
     return jsonify({"moved_to": str(target), "remaining": len(store.list_photos())})
 
 

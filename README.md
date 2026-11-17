@@ -294,6 +294,9 @@ portrait subjects well enough, because eyes, hair and clothing carry far more
 detail than a backdrop.
 
 Double-click a slider to reset just that one; **Reset edits** clears them all.
+**Undo** and **Redo** step through committed changes (`Cmd/Ctrl+Z`, add Shift to
+redo), and **100%** toggles the stage to real pixels (`Z`) — judging sharpening
+or noise on an image fitted to the window is guesswork.
 Tick **Compare** for a side-by-side against the original. **Export all** applies
 the same edit to every kept photo at full resolution, then **Download zip**
 gives you the lot.
@@ -358,9 +361,11 @@ Summary: 1 kept, 1 rejected, 1 skipped (threshold 100)
 Scores ranged 6.2 to 1660.7 - use these to tune your threshold.
 ```
 
-Copies land in `output/keep/` and `output/reject/`. Both folders are emptied of
-photos first, so a photo that changes side cannot end up in both. `input/` is
-never touched.
+Copies land in `output/keep/` and `output/reject/`. Both folders are cleared
+first, so a photo that changes side cannot end up in both — but nothing is
+deleted: anything already there is moved to `output/.trash/`. These folders
+look like a safe place to drop a favourite, and erasing one would be
+unrecoverable. `input/` is never touched.
 
 ## Choosing a threshold
 
@@ -401,10 +406,13 @@ abort the run.
 
 ## The interface
 
-The app wears a Watch Dogs 2 / DedSec skin: near-black ground, acid green with
-magenta and cyan accents, monospace throughout, hard edges and no rounded
-corners, halftone and scanline texture, chromatic-split glitch headings,
-rotated wheatpaste stickers and ASCII furniture.
+The app wears a Watch Dogs 2 / DedSec skin in blue: true black, one electric
+blue (`#29abe2`) and white, plus Windows-95 dialog grey. That is the entire
+palette. Monospace throughout, hard edges and no rounded corners, 1-bit
+chequer dither instead of halftone, scanlines, chromatic-split glitch
+headings with a white stroke, torn-paper section dividers, a paint drip under
+the hero, rotated wheatpaste stickers, and system-dialog boxes for anything
+the app has to tell you.
 
 One rule overrides the whole aesthetic, and it is in the stylesheet as a
 comment: **nothing textured, tinted or glowing goes over a photograph.** Every

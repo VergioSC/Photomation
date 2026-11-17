@@ -22,6 +22,7 @@
     auto: el("auto"), autoCrop: el("auto-crop"), clearCrop: el("clear-crop"),
     autoNotes: el("auto-notes"), autoNotesGroup: el("auto-notes-group"),
     shotLine: el("shot-line"), autoOpen: el("auto-open"), copyAll: el("copy-all"),
+    zoom: el("zoom"), undo: el("undo"), redo: el("redo"),
   };
 
   const state = {
@@ -32,7 +33,74 @@
     edits: new Map(),
     sizes: new Map(),        // filename -> original width/height ratio
     autoOnOpen: true,
+    /* Undo stack for the photo on screen. Snapshots are pushed when a change
+       is COMMITTED (a slider released, a preset clicked), not on every pixel
+       of a drag, or one slider sweep would bury the stack. */
+    history: [],
+    historyAt: -1,
+    restoring: false,
+    zoomed: false,
   };
+
+  function snapshot() {
+    return {
+      values: { ...state.values }, film: state.film,
+      crop: state.crop ? [...state.crop] : null,
+      recipe: state.recipe, aspect: state.aspect,
+    };
+  }
+
+  function pushHistory() {
+    if (state.restoring) return;
+    // Anything undone is dropped once a new change is made, as everywhere else.
+    state.history.length = state.historyAt + 1;
+    state.history.push(snapshot());
+    if (state.history.length > 60) state.history.shift();
+    state.historyAt = state.history.length - 1;
+    syncHistoryButtons();
+  }
+
+  function restore(snap) {
+    state.restoring = true;
+    setValues({ ...snap.values, film: snap.film });
+    state.crop = snap.crop ? [...snap.crop] : null;
+    state.aspect = snap.aspect || "";
+    state.recipe = snap.recipe;
+    for (const b of ui.aspectRow.children) {
+      b.classList.toggle("active", b.dataset.aspect === state.aspect);
+    }
+    for (const b of ui.recipeList.children) {
+      if (b.dataset.id) b.classList.toggle("active", b.dataset.id === state.recipe);
+    }
+    state.restoring = false;
+    captureEdit();
+    schedulePreview();
+  }
+
+  function undo() {
+    if (state.historyAt <= 0) return;
+    state.historyAt -= 1;
+    restore(state.history[state.historyAt]);
+    syncHistoryButtons();
+  }
+
+  function redo() {
+    if (state.historyAt >= state.history.length - 1) return;
+    state.historyAt += 1;
+    restore(state.history[state.historyAt]);
+    syncHistoryButtons();
+  }
+
+  function syncHistoryButtons() {
+    ui.undo.disabled = state.historyAt <= 0;
+    ui.redo.disabled = state.historyAt >= state.history.length - 1;
+  }
+
+  function resetHistory() {
+    state.history = [snapshot()];
+    state.historyAt = 0;
+    syncHistoryButtons();
+  }
 
   function captureEdit() {
     if (!state.current) return;
@@ -113,11 +181,13 @@
         captureEdit();
         schedulePreview();
       });
+      input.addEventListener("change", pushHistory);
       // Double-click resets one slider, which is quicker than dragging back.
       input.addEventListener("dblclick", () => {
         input.value = String(def);
         state.values[key] = def;
         show();
+        pushHistory();
         schedulePreview();
       });
 
@@ -225,12 +295,14 @@
     }
 
     if (restoreEdit(name)) {
+      resetHistory();
       renderPreview(fullPreviewPx());
       return;
     }
     // First time opening this photo: start from a clean slate, then let auto
     // have a go, which is what "auto adjust the photos" should mean.
     resetValuesOnly();
+    resetHistory();
     renderPreview(DRAFT_PX);
     if (state.autoOnOpen) await runAuto(false, true);
     else renderPreview(fullPreviewPx());
@@ -256,7 +328,7 @@
       button.title = name;
       const img = document.createElement("img");
       img.loading = "lazy";
-      img.src = `/api/thumb/${encodeURIComponent(name)}`;
+      img.src = `/api/thumb/${encodeURIComponent(name)}?from=keep`;
       img.alt = name;
       button.append(img);
       button.addEventListener("click", () => selectPhoto(name));
@@ -364,6 +436,7 @@
     // is a tall portrait - so a recipe may bring its own crop shape.
     if (recipe.crop_aspect) setAspect(String(recipe.crop_aspect));
     captureEdit();
+    pushHistory();
     for (const b of ui.recipeList.children) {
       b.classList.toggle("active", b.dataset.id === recipe.id);
     }
@@ -422,6 +495,7 @@
       ui.autoNotesGroup.classList.toggle("hidden", !data.notes.length);
       if (data.shot) ui.shotLine.textContent = data.shot;
       captureEdit();
+      pushHistory();
       renderPreview(fullPreviewPx());
       if (!quiet) toast("Auto adjusted. Every slider is still yours to change.");
     } catch (err) {
@@ -446,6 +520,7 @@
     if (target > srcAspect) { h = srcAspect / target; } else { w = target / srcAspect; }
     state.crop = [(1 - w) / 2, (1 - h) / 2, w, h];
     captureEdit();
+    pushHistory();
     schedulePreview();
   }
 
@@ -568,8 +643,34 @@
     state.film = ui.filmSelect.value;
     clearRecipeSelection();
     captureEdit();
+    pushHistory();
     schedulePreview();
   });
+  /* Zoom the stage to real pixels. Judging sharpening, noise or a dehaze
+     without seeing 100% is guesswork, and the stage is fitted to the window. */
+  function toggleZoom() {
+    state.zoomed = !state.zoomed;
+    el("stage").classList.toggle("zoomed", state.zoomed);
+    ui.zoom.textContent = state.zoomed ? "Fit" : "100%";
+    renderPreview(state.zoomed ? 2400 : fullPreviewPx());
+  }
+
+  ui.zoom.addEventListener("click", toggleZoom);
+  ui.undo.addEventListener("click", undo);
+  ui.redo.addEventListener("click", redo);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, select, textarea")) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      e.shiftKey ? redo() : undo();
+    } else if (!mod && e.key === "z") {
+      e.preventDefault();
+      toggleZoom();
+    }
+  });
+
   ui.auto.addEventListener("click", () => runAuto(false));
   ui.copyAll.addEventListener("click", copyToAll);
   ui.autoOpen.addEventListener("change", () => { state.autoOnOpen = ui.autoOpen.checked; });

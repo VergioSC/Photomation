@@ -217,16 +217,19 @@ def blur_score_of(image):
 
 
 def clear_previous_output():
-    """Delete photo copies from a previous run.
+    """Clear copies from a previous run, by moving them to output/.trash.
 
     Without this, running again at a different threshold leaves the old copy
     behind, so a photo that switched side sits in BOTH keep/ and reject/.
-    Only photo files are deleted; anything else in those folders is left alone.
+    Nothing is deleted: these folders look like a safe place to drop a
+    favourite, and erasing one would be unrecoverable.
     """
+    from storage import trash_file
+
     for folder in (KEEP_DIR, REJECT_DIR):
-        for path in folder.iterdir():
+        for path in sorted(folder.iterdir()):
             if path.is_file() and path.suffix.lower() in EXTENSIONS:
-                path.unlink()
+                trash_file(path, OUTPUT_DIR)
 
 
 def main():

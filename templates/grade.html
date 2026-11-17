@@ -12,6 +12,8 @@
         <p class="caption mono" style="margin-top: var(--s2)">{{ keep_count }} kept photo{{ 's' if keep_count != 1 }}</p>
       </div>
       <div style="margin-left:auto; display:flex; gap:var(--s3); flex-wrap:wrap">
+        <button class="btn btn-secondary btn-small" id="undo" disabled title="Undo (Cmd/Ctrl+Z)">Undo</button>
+        <button class="btn btn-secondary btn-small" id="redo" disabled title="Redo (Cmd/Ctrl+Shift+Z)">Redo</button>
         <button class="btn btn-secondary btn-small" id="auto">Auto adjust</button>
         <button class="btn btn-secondary btn-small" id="copy-all">Copy to all</button>
         <button class="btn btn-secondary btn-small" id="reset">Reset edits</button>
@@ -43,7 +45,9 @@
           <div class="stage-bar">
             <span class="caption mono" id="current-name">—</span>
             <span class="caption" id="shot-line"></span>
-            <label class="toggle" style="margin-left:auto">
+            <button class="btn btn-secondary btn-small" id="zoom" style="margin-left:auto"
+                    title="Toggle 100% (Z)">100%</button>
+            <label class="toggle">
               <input type="checkbox" id="auto-open" checked>
               <span>Auto on open</span>
             </label>
