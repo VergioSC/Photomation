@@ -61,6 +61,37 @@ def save_jpeg(path, image_bgr, source=None, quality=95):
     return path
 
 
+def _prune_cache(thumb_dir):
+    """Drop the least recently used thumbnails once the cache is over its limit.
+
+    Each photo gets a cached file per size the app has asked for, and the
+    editor asks for several, so this folder only ever grows. Least recently
+    used because the photos being worked on now are the ones worth keeping.
+    """
+    limit = config.CACHE_LIMIT_MB * 1024 * 1024
+    files = []
+    total = 0
+    for path in thumb_dir.glob("*.jpg"):
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        files.append((info.st_atime, info.st_size, path))
+        total += info.st_size
+    if total <= limit:
+        return
+
+    # Down to 80%, so this does not run again on the very next thumbnail.
+    for _, size, path in sorted(files):
+        if total <= limit * 0.8:
+            break
+        try:
+            path.unlink()
+            total -= size
+        except OSError:
+            pass
+
+
 def trash_file(path, output_dir):
     """Move a file into output/.trash instead of deleting it.
 
@@ -175,6 +206,7 @@ class LocalStorage:
             raise cull.LoadError("could not encode thumbnail")
         data = buffer.tobytes()
         cached.write_bytes(data)
+        _prune_cache(self.thumb_dir)
         return data
 
     def clear_bucket(self, bucket):

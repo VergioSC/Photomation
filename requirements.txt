@@ -17,3 +17,7 @@ rawpy==0.28.0             # camera RAW (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW)
 
 # Web dashboard:
 flask==3.1.3              # landing page, dashboard and JSON/SSE API
+gunicorn==23.0.0          # the server the container runs. Flask's own is a
+                          # development server: single connection at a time, no
+                          # request limits, and it says so in its own startup
+                          # warning. Not used when running app.py directly.

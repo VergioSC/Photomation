@@ -34,4 +34,8 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
     CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:5000/api/health')"
 
-CMD ["python", "app.py"]
+# Threads, not processes: an export streams progress for as long as it runs and
+# holds its worker the whole time, so a second worker thread has to be free for
+# the thumbnails the same page is still asking for. --timeout 0 because that
+# stream is deliberately long-lived and gunicorn would otherwise kill it.
+CMD ["sh", "-c", "gunicorn --bind ${PHOTOMATION_HOST}:${PHOTOMATION_PORT} --workers 1 --threads 8 --timeout 0 app:app"]

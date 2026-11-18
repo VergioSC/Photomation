@@ -45,6 +45,12 @@ MAX_UPLOAD_BYTES = int(os.environ.get("PHOTOMATION_MAX_UPLOAD_MB", "2048")) * 10
 # Longest side of grid and filmstrip thumbnails, in pixels.
 THUMB_SIZE = 480
 
+# How large the thumbnail cache may grow before the oldest entries are dropped.
+# Every photo caches a file per size it has been asked for, and the editor asks
+# for several, so without a ceiling this folder grows for as long as the app is
+# used. Override with PHOTOMATION_CACHE_MB.
+CACHE_LIMIT_MB = int(os.environ.get("PHOTOMATION_CACHE_MB", "512"))
+
 # Longest side of the editor's preview. It is shown large on a Retina screen,
 # where CSS pixels are doubled, so a 480px thumbnail was being blown up about
 # five times and looked pixellated.
