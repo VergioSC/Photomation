@@ -39,6 +39,15 @@ EXPOSURE_DAMPING = 0.6
 
 # Nothing is allowed to run away on its own.
 MAX_EXPOSURE_EV = 1.2
+
+# How much of the frame auto may newly push to white, on top of whatever was
+# already clipped. Small on purpose: shadows can be lifted later and clipped
+# highlights cannot be recovered at all.
+HIGHLIGHT_BUDGET = 0.003
+
+# How far the guard may roll the bright end down on its own. Past this it is
+# no longer recovering anything, just painting the highlights grey.
+GUARD_MAX_HIGHLIGHT_PULL = 48.0
 MAX_TEMPERATURE = 30.0
 MAX_TONE = 45.0
 
@@ -117,8 +126,89 @@ def analyse(image_bgr, want_crop=False, aspect=None, shot=None, selective=True):
         adj = dataclasses.replace(adj, sky_exposure=sky_exp,
                                   foreground_exposure=fg_exp, sky_contrast=sky_con)
 
+    # Last, once every step including the selective ones is in: render the
+    # whole recipe and take back whatever is clipping.
+    adj = _protect_the_highlights(original, adj, notes)
+
     rect = _auto_crop(work, aspect, notes) if want_crop else None
     return adj, rect, notes, limits
+
+
+def _blown_share(image):
+    """What share of the frame has at least one channel pinned to white."""
+    return float((image >= 254).any(axis=2).mean())
+
+
+def _protect_the_highlights(image, adj, notes):
+    """Walk the finished recipe back until it stops blowing out the highlights.
+
+    Every step above already protects its own number. They still stack: a
+    raised exposure, a set white point and added contrast each push the bright
+    end a little, and together they put a lit face over the line when no single
+    one of them would. Adding up their effects on paper is guesswork, so this
+    renders the recipe and measures the result.
+
+    What it gives up, in order: the white point first, because reaching a true
+    white is cosmetic, then exposure, then it starts actively recovering
+    highlights. Shadows, colour and noise settings are never touched - they are
+    not what is clipping.
+    """
+    # Small, and with noise reduction off: this is counting white pixels, and
+    # cleaning noise is by far the slowest step while changing almost none of
+    # them.
+    import masks as masks_module
+
+    probe = _downscale(image, 700)
+    quick = dataclasses.replace(adj, noise_reduction=0.0)
+    # The selective steps are often the ones doing the clipping - lifting a
+    # foreground by most of a stop is what blew out wet sand on a dusk beach -
+    # so the probe has to carry the masks too, or the guard measures a picture
+    # nobody is going to get.
+    scene = masks_module.analyse(probe) if adj.has_regional else None
+    # Allowed to grow by half again plus a small absolute margin, so a frame
+    # with real lamps in it keeps them white and a frame with none does not
+    # quietly acquire a blown face.
+    started_at = _blown_share(probe)
+    budget = min(0.25, max(HIGHLIGHT_BUDGET, started_at * 1.5 + HIGHLIGHT_BUDGET / 3))
+
+    for _ in range(16):
+        if _blown_share(edit.apply_adjustments(probe, quick, scene=scene)) <= budget:
+            break
+        if quick.white_point > 0:
+            # Reaching a true white is the cosmetic part, so it goes first and
+            # it goes entirely.
+            quick = dataclasses.replace(quick, white_point=0.0)
+        elif quick.highlights > -GUARD_MAX_HIGHLIGHT_PULL:
+            # Then roll the bright end down. This is the cheapest concession
+            # available: it darkens only what is near clipping and leaves the
+            # midtones - the faces, the ground - where they were. Cutting
+            # exposure instead darkens the whole photo to save a few pixels.
+            quick = dataclasses.replace(quick, highlights=round(quick.highlights - 6.0, 1))
+        elif quick.foreground_exposure > 5:
+            quick = dataclasses.replace(
+                quick, foreground_exposure=round(quick.foreground_exposure - 8.0, 1))
+        elif quick.exposure > 0.08:
+            quick = dataclasses.replace(quick, exposure=round(quick.exposure - 0.15, 2))
+        else:
+            break   # nothing left to give without wrecking the photo
+
+    moved = [(name, getattr(adj, name), getattr(quick, name))
+             for name in ("white_point", "foreground_exposure", "exposure", "highlights")
+             if getattr(adj, name) != getattr(quick, name)]
+    if not moved:
+        return adj
+
+    changes = ", ".join(f"{name.replace('_', ' ')} {was:.0f} to {now:.0f}"
+                        if name != "exposure" else
+                        f"exposure {was:+.2f} to {now:+.2f}"
+                        for name, was, now in moved)
+    notes.append(
+        f"Pulled back to protect the highlights: {changes}. Together the steps "
+        f"were clipping more of the frame than the photo started with, and a "
+        f"clipped white pixel holds no detail to recover at any price.")
+    return dataclasses.replace(
+        adj, white_point=quick.white_point, exposure=quick.exposure,
+        highlights=quick.highlights, foreground_exposure=quick.foreground_exposure)
 
 
 def _downscale(image, longest):
@@ -177,9 +267,30 @@ def _auto_white_balance(image, notes):
 
 
 def _auto_exposure(image, notes):
-    """Move the median brightness towards a normal midtone, in stops."""
+    """Move the subject's brightness towards a normal midtone, in stops.
+
+    Two rules a photographer works by, which the first version of this did not.
+
+    Expose for the subject, not for the frame. Taking the median of every pixel
+    lets a large dark area vote on the exposure. On a shop interior where a
+    third of the frame was unrecoverable black, that dragged the median to 0.18
+    and bought a full +1.2 stops - and blew out the people, who had been lit
+    correctly all along. Tones already crushed to black hold nothing to rescue,
+    and specular highlights are meant to be white, so neither gets a vote.
+
+    Clipped highlights never come back. Shadows can be lifted later, at the
+    cost of noise; a white pixel has no detail left to recover at any price.
+    So whatever the midtones ask for, the result is pulled back to roughly the
+    highlight clipping the photo already had.
+    """
     luma = np.sum(image.astype(np.float32) / 255.0 * edit.LUMA_BGR, axis=2)
-    median = float(np.median(luma))
+
+    usable = luma[(luma > 0.02) & (luma < 0.92)]
+    if usable.size < luma.size * 0.05:
+        # Almost nothing in the usable band: fall back to the whole frame
+        # rather than decide the exposure from a handful of pixels.
+        usable = luma.reshape(-1)
+    median = float(np.median(usable))
     if median <= 0.004:
         notes.append("Exposure left alone: the frame is almost entirely black.")
         return 0.0
@@ -188,12 +299,39 @@ def _auto_exposure(image, notes):
     target = float(edit.srgb_to_linear(np.float32(TARGET_MEDIAN)))
     full = float(np.log2(target / max(current, 1e-6)))
     ev = float(np.clip(full * EXPOSURE_DAMPING, -MAX_EXPOSURE_EV, MAX_EXPOSURE_EV))
+    if ev > 0:
+        ev = _hold_back_for_highlights(luma, ev, notes)
     if abs(ev) < 0.08:
         notes.append("Exposure already about right.")
         return 0.0
     notes.append(f"Exposure {'raised' if ev > 0 else 'lowered'} {abs(ev):.2f} stops "
                  f"to bring the midtones to a normal level.")
     return round(ev, 2)
+
+
+def _hold_back_for_highlights(luma, ev, notes):
+    """Lower a positive exposure until it stops blowing out the highlights.
+
+    Raising exposure scales light, so a pixel's headroom in stops is
+    log2(white / its own light). The brightest tone allowed to clip is the one
+    at the frame's existing clipping plus a small allowance - a lamp or a
+    window that is already white stays white, and nothing new joins it.
+    """
+    already_blown = float((luma > 0.99).mean())
+    budget = min(0.25, already_blown + HIGHLIGHT_BUDGET)
+    brightest_kept = float(np.percentile(luma, 100.0 * (1.0 - budget)))
+
+    white = float(edit.srgb_to_linear(np.float32(0.99)))
+    light = float(edit.srgb_to_linear(np.float32(max(brightest_kept, 1e-4))))
+    headroom = float(np.log2(white / max(light, 1e-6)))
+    if headroom >= ev:
+        return ev
+
+    held = max(0.0, round(headroom, 2))
+    notes.append(f"Exposure held to {held:.2f} stops instead of {ev:.2f}: "
+                 f"more would blow out the highlights, and a white pixel "
+                 f"cannot be recovered.")
+    return held
 
 
 def _auto_contrast(image, notes):
