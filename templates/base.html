@@ -10,12 +10,17 @@
   <nav class="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="{{ url_for('landing') }}">
-        <svg class="brand-mark" viewBox="0 0 12 12" aria-hidden="true">
-          <!-- registration-bracket frame: the corner marks used on every panel,
-               closed into a viewfinder, with the sensor lit. -->
-          <path d="M0 0h5v2H2v3H0V0zM7 0h5v5h-2V2H7V0zM0 7h2v3h3v2H0V7zM10 7h2v5H7v-2h3V7z"
-                fill="currentColor"/>
-          <rect x="4" y="4" width="4" height="4" fill="var(--volt)"/>
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- Bracket-frame camera: a thin viewfinder with heavy rules
+               bracketing two opposite corners, the lens lit, and the shutter
+               button sitting proud of the top-right as a single pixel. -->
+          <rect x="5.5" y="5.5" width="13" height="13" fill="none"
+                stroke="currentColor" stroke-width="1"/>
+          <path d="M12 3.6h8.4V6H12z M18 3.6h2.4v8.4H18z" fill="currentColor"/>
+          <path d="M3.6 12H6v8.4H3.6z M3.6 18H12v2.4H3.6z" fill="currentColor"/>
+          <circle cx="12" cy="12" r="3" fill="none"
+                  stroke="var(--volt)" stroke-width="2"/>
+          <rect x="21.2" y="0.8" width="2.4" height="2.4" fill="var(--volt)"/>
         </svg>
         <span>Photomation</span>
       </a>

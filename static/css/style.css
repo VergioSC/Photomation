@@ -129,7 +129,7 @@ a:hover { color: var(--void); background: var(--volt); }
   font-weight: 700; font-size: 14px; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--ink);
 }
-.brand-mark { width: 18px; height: 18px; flex: 0 0 auto; shape-rendering: crispEdges; }
+.brand-mark { width: 24px; height: 24px; flex: 0 0 auto; overflow: visible; }
 .brand:hover { background: none; color: var(--volt); }
 .nav-links { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
 .nav-links a {
