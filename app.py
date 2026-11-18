@@ -407,17 +407,25 @@ def api_grade():
                     source = "yours" if own else "untouched"
 
                 image = edit_module.crop_image(image, crop)
-                scene = masks_module.analyse(image) if adj.has_regional else None
-                out = edit_module.apply_adjustments(image, adj, table, scene=scene)
+                # Resize BEFORE the edit, not after. Grain, sharpening and
+                # structure are a share of the frame, so shrinking afterwards
+                # shrinks them too and the file no longer matches what the
+                # preview promised. Doing it first also saves the work of
+                # editing pixels that are about to be thrown away.
                 if resize_to:
-                    h, w = out.shape[:2]
+                    h, w = image.shape[:2]
                     scale = resize_to / max(h, w)
                     if scale < 1:
-                        out = cv2.resize(out, (max(1, round(w * scale)), max(1, round(h * scale))),
-                                         interpolation=cv2.INTER_AREA)
+                        image = cv2.resize(
+                            image, (max(1, round(w * scale)), max(1, round(h * scale))),
+                            interpolation=cv2.INTER_AREA)
+                scene = masks_module.analyse(image) if adj.has_regional else None
+                out = edit_module.apply_adjustments(image, adj, table, scene=scene)
                 target = graded_dir / f"{ref.path.stem}.jpg"
-                if not cv2.imwrite(str(target), out, [cv2.IMWRITE_JPEG_QUALITY, 95]):
-                    raise cull.LoadError("could not write the edited file")
+                try:
+                    storage_module.save_jpeg(target, out, source=ref.path)
+                except OSError as exc:
+                    raise cull.LoadError(f"could not write the edited file: {exc}")
                 payload = {"type": "photo", "index": index, "name": ref.name,
                            "out": target.name, "edit": source}
             except (cull.LoadError, lut_module.CubeError) as exc:

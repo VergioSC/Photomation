@@ -22,6 +22,45 @@ import config
 import cull
 
 
+def save_jpeg(path, image_bgr, source=None, quality=95):
+    """Write a finished JPEG, carrying the camera data over from `source`.
+
+    Two things an exported photo needs that a plain cv2.imwrite does not give:
+
+    No colour subsampling. JPEG normally stores colour at half resolution,
+    which is invisible on a snapshot and very visible on a graded one - a
+    saturated red edge or a deep blue sky gets a soft, blocky fringe. These
+    files are the deliverable, so colour is stored at full resolution.
+
+    The camera data. Without it the export loses the camera, lens, date, ISO,
+    shutter and aperture, and a photographer cannot caption or sort the result.
+    Two tags are deliberately NOT carried over: the orientation flag, because
+    the image has already been rotated upright and a second rotation by the
+    viewer would lay it on its side, and the embedded preview thumbnail, which
+    still shows the UNEDITED photo and is what a file browser displays.
+    Re-serialising the tags drops the thumbnail, which is why it is done.
+    """
+    from PIL import Image
+
+    exif_bytes = None
+    if source is not None:
+        try:
+            with Image.open(source) as original:
+                tags = original.getexif()
+            if len(tags):
+                tags[0x0112] = 1          # orientation: already applied
+                exif_bytes = tags.tobytes()
+        except Exception:
+            # A RAW or HEIC source Pillow cannot open, or a file with no tags.
+            # Losing the camera data is not a reason to lose the photo.
+            exif_bytes = None
+
+    rgb = Image.fromarray(image_bgr[:, :, ::-1])
+    rgb.save(path, "JPEG", quality=int(quality), subsampling=0, optimize=True,
+             **({"exif": exif_bytes} if exif_bytes else {}))
+    return path
+
+
 def trash_file(path, output_dir):
     """Move a file into output/.trash instead of deleting it.
 
