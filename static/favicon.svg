@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Filled silhouette, not the outline used in the header: at 16px a 1px
+       stroke disappears. The lens is punched through with evenodd so the
+       mark works on a light or a dark tab bar. -->
+  <path fill="#29abe2" fill-rule="evenodd"
+        d="M1.2 7h6.5l0.8-2h5l0.8 2h6.5v12.8H1.2z
+           M11.8 9.1a4.2 4.2 0 1 0 0.01 0z"/>
+  <rect x="18.2" y="0.8" width="4" height="4" fill="#29abe2"/>
+</svg>
