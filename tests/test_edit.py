@@ -88,12 +88,15 @@ def test_shadows_and_highlights_hit_their_own_ends():
 
 
 def test_sharpen_raises_local_contrast_without_moving_flat_areas():
-    img = np.full((32, 32, 3), 100, dtype=np.uint8)
-    img[:, 16:] = 160                       # one hard edge
+    # A realistic size on purpose: the sharpening radius is a share of the
+    # frame, so on a 32-pixel test square it is correctly sub-pixel and does
+    # nothing. See test_detail_sliders_look_the_same_at_any_resolution.
+    img = np.full((400, 400, 3), 100, dtype=np.uint8)
+    img[:, 200:] = 160                      # one hard edge
     out = edit.apply_adjustments(img, edit.Adjustments(sharpen=80))
-    assert int(out[16, 0, 0]) == 100, "flat area moved"
-    edge_before = int(img[16, 16, 0]) - int(img[16, 15, 0])
-    edge_after = int(out[16, 16, 0]) - int(out[16, 15, 0])
+    assert int(out[200, 0, 0]) == 100, "flat area moved"
+    edge_before = int(img[200, 200, 0]) - int(img[200, 199, 0])
+    edge_after = int(out[200, 200, 0]) - int(out[200, 199, 0])
     assert edge_after > edge_before, f"edge {edge_before} -> {edge_after}"
 
 
@@ -203,6 +206,105 @@ def test_levels_do_not_clip_what_was_there():
     assert int(out.max()) > int(img.max()), "white point did not brighten"
     # no wholesale crushing: the spread of distinct values must survive
     assert len(np.unique(out)) > len(np.unique(img)) * 0.7
+
+
+# ---------------------------------------------------------------- tone curves
+
+
+def ramp():
+    """A row of rising tones, as a 1-pixel-high BGR image."""
+    tones = [0.02, 0.05, 0.12, 0.25, 0.4, 0.6, 0.78, 0.9, 0.97]
+    img = np.array([[[t, t, t] for t in tones]], dtype=np.float32) * 255.0
+    return img.astype(np.uint8)
+
+
+def test_tone_controls_never_invert_the_order_of_tones():
+    """Brighter in must always mean brighter out.
+
+    The first version of these curves failed this: recovering highlights left
+    0.97 darker than 0.90, and lifting shadows made the darkest pixel the
+    brightest of the three. An inverted gradient cannot be undone later.
+    """
+    for key, value in (("highlights", 100), ("highlights", -100),
+                       ("shadows", 100), ("shadows", -100)):
+        out = edit.apply_adjustments(ramp(), edit.Adjustments(**{key: value}))
+        row = [int(v) for v in out[0, :, 0]]
+        assert all(b >= a for a, b in zip(row, row[1:])), \
+            f"{key}={value} inverted the tone order: {row}"
+
+
+def test_tone_controls_never_fuse_distinct_tones():
+    """Pushing a control to its limit must not weld tones into one value.
+
+    The old additive version drove 0.90 and 0.97 both to pure white, and
+    0.02/0.05/0.12 all to pure black, destroying the detail in exactly the
+    areas the slider was meant to rescue.
+    """
+    for key, value in (("highlights", 100), ("highlights", -100),
+                       ("shadows", 100), ("shadows", -100)):
+        out = edit.apply_adjustments(ramp(), edit.Adjustments(**{key: value}))
+        row = [int(v) for v in out[0, :, 0]]
+        # 9 tones in, at least 8 distinct out: one pair may round together,
+        # a whole end of the range may not collapse.
+        assert len(set(row)) >= 8, f"{key}={value} fused tones: {row}"
+
+
+def test_tone_controls_keep_the_ends_of_the_range():
+    """Crushing must leave black at black; lifting must not blow out white."""
+    out = edit.apply_adjustments(ramp(), edit.Adjustments(shadows=-100))
+    assert int(out[0, 0, 0]) == 0, "crushed shadows should reach true black"
+    out = edit.apply_adjustments(ramp(), edit.Adjustments(highlights=100))
+    assert int(out[0, -1, 0]) < 255, "lifting highlights clipped to pure white"
+
+
+# ------------------------------------------------- resolution independence
+
+
+def detail_energy(img):
+    grey = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    return float(cv2.Laplacian(grey, cv2.CV_32F).var())
+
+
+def textured(longest):
+    """A repeatable textured image at a given size, for scale comparisons."""
+    rng = np.random.default_rng(7)
+    small = rng.integers(40, 215, (24, 24, 3), dtype=np.uint8)
+    return cv2.resize(small, (longest, longest * 3 // 4),
+                      interpolation=cv2.INTER_CUBIC)
+
+
+def to_long_edge(img, longest):
+    height, width = img.shape[:2]
+    scale = longest / max(height, width)
+    return cv2.resize(img, (max(1, round(width * scale)), max(1, round(height * scale))),
+                      interpolation=cv2.INTER_AREA)
+
+
+def test_detail_sliders_look_the_same_at_any_resolution():
+    """A slider must mean the same thing in a preview and in the export.
+
+    Pixel-sized blur radii broke this badly: measured on a real 3120px photo,
+    grain at 60 added 10.6x the fine detail in a 1000px preview and 1.7x in
+    the export. Anything tuned by eye on the preview came out wrong.
+
+    The two sizes here hold the same content, so the change each slider makes
+    is measured at its own resolution and then both are brought to one viewing
+    size - which is how a person compares a preview with an export.
+    """
+    small = textured(500)
+    big = textured(2000)
+    for key, value in (("grain", 60.0), ("structure", 80.0), ("sharpen", 70.0),
+                       ("clarity", 60.0)):
+        adj = edit.Adjustments(**{key: value})
+        sizes = []
+        for base in (small, big):
+            change = (edit.apply_adjustments(base, adj).astype(np.float32)
+                      - base.astype(np.float32))
+            sizes.append(float(to_long_edge(change, 400).std()))
+        ratio = max(sizes) / max(min(sizes), 1e-6)
+        assert ratio < 2.0, (f"{key}={value} behaves differently by size: "
+                             f"change was {sizes[0]:.2f} at 500px and "
+                             f"{sizes[1]:.2f} at 2000px, seen at the same size")
 
 
 if __name__ == "__main__":
