@@ -170,6 +170,19 @@ def build_adjustments(data):
     return edit.Adjustments.from_dict(merged)
 
 
+def declared_fields(adj):
+    """The fields a recipe actually sets, i.e. everything left at its default.
+
+    A recipe describes a LOOK. It has no opinion about how dark the photo was
+    or how noisy the capture is, so applying one must not silently undo the
+    exposure, dehaze, levels and noise work that auto did for this photo.
+    """
+    return sorted(
+        f.name for f in dataclasses.fields(adj)
+        if getattr(adj, f.name) != f.default
+    )
+
+
 def load_all(folder=None):
     """Read every recipe JSON. Returns (recipes, problems)."""
     folder = Path(folder or RECIPES_DIR)
@@ -194,6 +207,7 @@ def load_all(folder=None):
                 "settings": data.get("settings") or {},
                 "crop_aspect": float(crop_aspect) if crop_aspect else None,
                 "adjustments": adj,
+                "sets": declared_fields(adj),
             })
         except (OSError, ValueError, RecipeError) as exc:
             problems.append({"name": path.name, "reason": str(exc)})

@@ -178,6 +178,7 @@
         state.values[key] = Number(input.value);
         show();
         clearRecipeSelection();
+        markNotesStale();
         captureEdit();
         schedulePreview();
       });
@@ -430,8 +431,16 @@
   /* A recipe only fills the sliders in. Everything stays adjustable after. */
   function applyRecipe(recipe) {
     state.recipe = recipe.id;
-    setValues(recipe.values);
+    // Only the fields the recipe actually declares. It describes a look, and
+    // knows nothing about this photo's exposure, haze or noise - so applying
+    // one must not wipe the corrections auto worked out for it.
+    const look = {};
+    for (const key of recipe.sets || Object.keys(recipe.values)) {
+      look[key] = recipe.values[key];
+    }
+    setValues(look);
     ui.recipeNote.textContent = recipe.notes || "";
+    markNotesStale();
     // Some looks are inseparable from their format - Arbus is square, Avedon
     // is a tall portrait - so a recipe may bring its own crop shape.
     if (recipe.crop_aspect) setAspect(String(recipe.crop_aspect));
@@ -454,6 +463,13 @@
       state.film = values.film || "";
       ui.filmSelect.value = state.film;
     }
+  }
+
+  /* The auto panel explains values. Once they change it is describing a photo
+     that no longer exists, so it says so rather than quietly lying. */
+  function markNotesStale() {
+    if (ui.autoNotesGroup.classList.contains("hidden")) return;
+    ui.autoNotesGroup.classList.add("stale");
   }
 
   function clearRecipeSelection() {
@@ -493,6 +509,7 @@
         ui.autoNotes.append(li);
       }
       ui.autoNotesGroup.classList.toggle("hidden", !data.notes.length);
+      ui.autoNotesGroup.classList.remove("stale");
       if (data.shot) ui.shotLine.textContent = data.shot;
       captureEdit();
       pushHistory();

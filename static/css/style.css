@@ -666,3 +666,30 @@ input[type="number"]:focus, .select:focus { outline: none; border-color: var(--v
     8% 60%, 4% 60%, 4% 32%, 0 32%);
   opacity: 0.9;
 }
+
+/* Checkboxes: the browser default is a rounded blue pill, which fights every
+   other edge in this theme. */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 14px; height: 14px; margin: 0; border-radius: 0;
+  border: 1px solid var(--line); background: var(--surface-2);
+  display: grid; place-items: center; cursor: pointer;
+}
+input[type="checkbox"]:checked { background: var(--volt); border-color: var(--volt); }
+input[type="checkbox"]:checked::after {
+  content: ""; width: 6px; height: 6px; background: var(--void);
+}
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+/* The stage bar sits under the picture; it should read as a strip of controls,
+   not three unrelated things floating. */
+.stage-bar {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s3); padding: var(--s3) var(--s1) 0;
+}
+
+/* Auto's reasoning describes values. Once they change it is out of date. */
+#auto-notes-group.stale .auto-notes { opacity: 0.45; }
+#auto-notes-group.stale .group-title::after {
+  content: " — out of date"; color: var(--ink-3); letter-spacing: 0.04em;
+}

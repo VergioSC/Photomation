@@ -349,8 +349,14 @@
     // sqrt axis, so the gaps between labels widen towards the right.
     for (let t = 0; t <= 4; t += 1) {
       const value = fromAxis(t / 4);
+      // Clamping both ends to the same minimum stacked "0" and the maximum on
+      // top of each other at the left edge. Place each tick at its own spot.
+      const raw = xOf(value);
+      const x = t === 0 ? pad.left + 2
+              : t === 4 ? width - pad.right - 2
+              : Math.max(pad.left + 14, Math.min(width - pad.right - 14, raw));
       const text = make("text", {
-        x: Math.min(width - pad.right - 10, Math.max(pad.left + 2, xOf(value))),
+        x,
         y: height - 6,
         class: "axis-text",
         "text-anchor": t === 0 ? "start" : t === 4 ? "end" : "middle",

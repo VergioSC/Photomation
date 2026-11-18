@@ -444,6 +444,7 @@ def api_recipes():
                 "source": r["source"],
                 "crop_aspect": r["crop_aspect"],
                 "values": dataclasses.asdict(r["adjustments"]),
+                "sets": r["sets"],
             }
             for r in found
         ],

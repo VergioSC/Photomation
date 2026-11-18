@@ -309,6 +309,19 @@ def test_auto_measures_exposure_after_dehazing():
     assert 0.2 < median < 0.75, f"ended up at {median:.2f} brightness"
 
 
+def test_a_recipe_only_declares_its_own_look():
+    """Applying a look must not undo the corrections auto made for the photo.
+
+    A recipe knows nothing about this frame's exposure, haze or noise, so
+    those fields must not appear in what it asks the editor to set.
+    """
+    for r in recipes.load_all()[0]:
+        for field in ("exposure", "dehaze", "black_point", "white_point",
+                      "noise_reduction", "sky_exposure", "foreground_exposure"):
+            assert field not in r["sets"], f"{r['id']} would reset {field}"
+        assert "film" in r["sets"], f"{r['id']} sets no look at all"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
