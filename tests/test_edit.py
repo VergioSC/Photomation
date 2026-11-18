@@ -307,6 +307,51 @@ def test_detail_sliders_look_the_same_at_any_resolution():
                              f"{sizes[1]:.2f} at 2000px, seen at the same size")
 
 
+# --------------------------------------------------- the highlight shoulder
+
+
+def test_shoulder_does_nothing_when_nothing_is_over():
+    """A photo with headroom must come back untouched, not quietly darkened."""
+    x = np.linspace(0.0, 1.0, 64, dtype=np.float32)
+    out = edit._soft_clip(x)
+    assert np.max(np.abs(out - x)) < 1e-6, "the shoulder darkened a photo that was not clipping"
+
+
+def test_shoulder_keeps_overbright_values_apart():
+    """Values past white must stay distinct instead of all becoming white.
+
+    This is the whole point: warming the white balance, pushing saturation and
+    adding clarity each carry pixels past 1.0, and clipping each one threw the
+    difference away. Stacked across a film recipe that took one photo from
+    0.23% of the frame clipped to 1.68%.
+    """
+    x = np.array([0.9, 1.0, 1.1, 1.25, 1.4], dtype=np.float32)
+    out = edit._soft_clip(x)
+    assert np.all(np.diff(out) > 0), f"over-bright values were fused: {out}"
+    assert out.max() <= 1.0, "the shoulder let a value past white"
+    assert out[0] >= 0.85, "the shoulder reached too far down into the midtones"
+
+
+def test_recipes_do_not_blow_out_a_normal_photo():
+    """Applying any film look must not push a chunk of the frame to white."""
+    import dataclasses
+    import recipes as recipes_module
+
+    rng = np.random.default_rng(5)
+    img = cv2.GaussianBlur(rng.integers(60, 205, (480, 640, 3), dtype=np.uint8), (0, 0), 1.2)
+    blown = lambda x: float((x >= 254).any(axis=2).mean())
+    allowed = max(0.01, blown(img) * 2 + 0.005)
+
+    for recipe in recipes_module.load_all()[0]:
+        adj = edit.Adjustments()
+        for key in recipe["sets"]:
+            adj = dataclasses.replace(adj, **{key: getattr(recipe["adjustments"], key)})
+        got = blown(edit.apply_adjustments(img, adj))
+        assert got <= allowed, (
+            f"{recipe['id']} pushed {got * 100:.2f}% of the frame to white, "
+            f"from {blown(img) * 100:.2f}%")
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

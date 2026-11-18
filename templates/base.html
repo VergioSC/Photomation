@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Photomation</title>
+  <!-- The page first, then the app: a pinned tab shows the start of the
+       title, so "Cull" is more use there than a fourth copy of "Photomation". -->
+  <title>{% block title %}Photomation{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="mask-icon" href="{{ url_for('static', filename='favicon.svg') }}" color="#29abe2">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -25,7 +27,7 @@
       </a>
       <div class="nav-links">
         <a href="{{ url_for('landing') }}" {% if active == 'home' %}class="active"{% endif %}>Overview</a>
-        <a href="{{ url_for('dashboard') }}" {% if active == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('dashboard') }}" {% if active == 'dashboard' %}class="active"{% endif %}>Cull</a>
         <a href="{{ url_for('grade_page') }}" {% if active == 'grade' %}class="active"{% endif %}>Edit</a>
       </div>
     </div>

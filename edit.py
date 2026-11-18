@@ -117,6 +117,36 @@ def linear_to_srgb(x):
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1 / 2.4) - 0.055)
 
 
+def _soft_clip(x, knee=0.85):
+    """Roll everything above `knee` into the headroom left, instead of clipping.
+
+    Every step that brightens a channel - warming the white balance, pushing
+    saturation, a clarity halo on the bright side of an edge - can carry a
+    pixel past white, and `np.clip` then throws the difference away. Nothing
+    individually looks unreasonable, but they stack: on one photo auto had the
+    frame at 0.23% clipped and a film recipe took it to 1.68%, and the clipped
+    part is the part a viewer reads as "overexposed".
+
+    This compresses the range [knee, peak] into [knee, 1] instead. It is
+    adaptive and does nothing when nothing is over: with a peak of exactly 1
+    the exponent below is 1 and the curve is the identity, so a photo that was
+    not clipping is not darkened. The slope at the knee is 1, so no edge
+    appears where the shoulder starts, and the curve is monotonic, so the
+    order of tones is kept.
+    """
+    # From the brightest value present, but capped: one hot pixel from a lamp
+    # should not flatten the shoulder for the whole photo.
+    peak = min(2.0, float(x.max()))
+    if peak <= 1.0:
+        return np.clip(x, 0.0, 1.0)
+
+    span = peak - knee
+    room = 1.0 - knee
+    t = np.clip((x - knee) / span, 0.0, 1.0)
+    shouldered = knee + room * (1.0 - (1.0 - t) ** (span / room))
+    return np.clip(np.where(x > knee, shouldered, x), 0.0, 1.0)
+
+
 def apply_regional(image_bgr, adj, scene):
     """Apply the selective parts of `adj` using `scene` masks.
 
@@ -191,7 +221,7 @@ def apply_adjustments(image_bgr, adj, lut=None, scene=None):
     if adj.contrast:
         rgbish = _contrast(rgbish, adj.contrast)
 
-    rgbish = np.clip(rgbish, 0.0, 1.0)
+    rgbish = _soft_clip(rgbish)
     out = (rgbish * 255.0 + 0.5).astype(np.uint8)
 
     # The film look is the base character, so it goes on before the user's own
@@ -212,7 +242,7 @@ def apply_adjustments(image_bgr, adj, lut=None, scene=None):
     if adj.vibrance or adj.saturation:
         x = out.astype(np.float32) / 255.0
         x = _colour(x, adj.vibrance, adj.saturation)
-        out = (np.clip(x, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+        out = (_soft_clip(x) * 255.0 + 0.5).astype(np.uint8)
 
     if lut is not None and adj.lut_strength > 0:
         import lut as lut_module
@@ -522,7 +552,7 @@ def apply_film_look(image_bgr, name):
         x = out.astype(np.float32) / 255.0
         grey = np.sum(x * LUMA_BGR, axis=2, keepdims=True)
         x = grey + (x - grey) * float(look["saturation"])
-        out = (np.clip(x, 0, 1) * 255.0 + 0.5).astype(np.uint8)
+        out = (_soft_clip(x) * 255.0 + 0.5).astype(np.uint8)
     return out
 
 
@@ -536,7 +566,9 @@ def _clarity(image_bgr, amount):
     lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
     L = lab[:, :, 0].astype(np.float32)
     blurred = cv2.GaussianBlur(L, (0, 0), sigmaX=max(image_bgr.shape[:2]) / 110.0)
-    lab[:, :, 0] = np.clip(L + (L - blurred) * strength, 0, 255).astype(np.uint8)
+    # Shouldered, not clipped: the bright side of every edge overshoots, and
+    # clipping those overshoots is what turns clarity into white blotches.
+    lab[:, :, 0] = (_soft_clip((L + (L - blurred) * strength) / 255.0) * 255.0).astype(np.uint8)
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
@@ -602,7 +634,7 @@ def _structure(image_bgr, amount):
     lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
     L = lab[:, :, 0].astype(np.float32)
     detail = L - cv2.GaussianBlur(L, (0, 0), sigmaX=2.5 * _scale_of(image_bgr))
-    lab[:, :, 0] = np.clip(L + detail * strength * 1.4, 0, 255).astype(np.uint8)
+    lab[:, :, 0] = (_soft_clip((L + detail * strength * 1.4) / 255.0) * 255.0).astype(np.uint8)
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
