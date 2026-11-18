@@ -122,6 +122,17 @@ out of the way, so you can take a look as a starting point and move anything
 you disagree with. Touching any slider deselects the recipe, because the result
 is no longer that recipe.
 
+Each preset in the list carries **a thumbnail of the photo you are editing**
+under that look, because a name tells you nothing about what it will do to your
+photo. All 27 tiles arrive as one image that the page slices up, so the whole
+list costs about as much as a single preview rather than 27 requests queueing
+behind each other.
+
+A selected preset also gets a **strength** control, which mixes between what
+the sliders held before it and the preset itself. At 100 it is the preset as
+written; at 40 it is a suggestion. The film simulation is diluted along with
+the numbers.
+
 Presets come in two groups:
 
 - **Film** — twelve looks spanning slide film, portrait negative, cinema stock
@@ -216,12 +227,24 @@ Each decision is reported in plain words, and when a limit actually bites it
 says so: *"Shadows lifted 45: 32.7% of the frame was crushed to black"*,
 then *"Shadow lift held to 22 instead of 45 to keep noise down."*
 
+**Nothing is trusted until it has been rendered.** Each step above protects its
+own number, but they stack — exposure, the white point, contrast and the
+selective foreground lift each push the bright end a little, and together they
+go over even when no single one of them would. So the finished recipe is
+rendered small and measured, and walked back until it clips no more of the
+frame than the photo started with. It gives up the white point first, then
+rolls the bright end down, and only then touches exposure, because recovering
+highlights darkens what is near clipping while cutting exposure darkens the
+whole photo. On the four sample frames, blown highlights land at 0.00–0.03%
+against 0.00–0.16% before any editing. Without this pass one of them reached
+3.41%, which is what overexposure looks like as a number.
+
 This is image analysis, not a neural network, and nothing leaves your machine:
 
 | Step | How |
 |---|---|
 | White balance | Averages the *near-neutral* pixels only. Plain grey-world assumes a scene averages to grey, which turns a blue sea brown; the pixels that are already close to neutral are the ones whose colour really is the light. |
-| Exposure | Aims the median brightness at a normal midtone, but only moves 60% of the way. A dusk photo is meant to be dark, and correcting it fully flattens the mood out of it. |
+| Exposure | Aims the median brightness of the **subject** at a normal midtone, but only moves 60% of the way. Tones already crushed to black hold nothing to rescue, and specular highlights are meant to be white, so neither gets a vote: letting them vote is what blew out a shop interior where a third of the frame was black shelving. A dusk photo is also meant to be dark, which is why the move is damped. |
 | Contrast | Measures how much of the tonal range the photo actually uses and stretches it only if it is sitting in a narrow band. |
 | Shadows / highlights | Measures how much is clipped at each end and recovers only that much. |
 | Crop | Finds the busiest part of the frame by edge density, frames it on a rule-of-thirds line, and keeps 85% of the picture — a tightening, not a recomposition. |
@@ -259,6 +282,26 @@ interface later, for real per-class masks (person, skin, vegetation).
 
 Two things are done the way an editor does them rather than the obvious way.
 
+**Shadows and highlights move along curves that cannot clip or invert.** The
+obvious version — add a fixed amount wherever a mask says "this is dark" —
+fails in two ways that cannot be undone afterwards. It clips: lifting
+highlights pushed 0.90 and 0.97 both to pure white, so two tones became one
+pixel value. And it inverts: recovering highlights left 0.97 *darker* than
+0.90, because the mask grew faster than the tone it was subtracting from,
+which reads as posterised mush in a sky. Each direction is now monotonic and
+bounded by construction — the amount a pixel moves is multiplied by the room
+it actually has left — so black stays black when crushing, white stays
+reachable when lifting, and all nine steps of a test ramp survive every
+extreme in the right order.
+
+**Every radius is a share of the frame, not a count of pixels.** A blur radius
+measured in pixels means different things at different sizes, so a slider set
+by eye on the preview came out wrong in the export. Measured on a 3120px
+photo: grain at 60 added 10.6× the fine detail at preview size and 1.7× in the
+export; sharpening 2.7× against 1.6×. Radii are now defined against a 1000px
+reference and scaled, and export resizes *before* editing rather than after,
+so the file matches what the preview promised.
+
 **Contrast is an S-curve, not a multiplier.** Scaling the distance from mid
 grey drives darks below zero and brights above one, where they clip. At a
 routine +27 that flattened everything under 10% brightness into a single
@@ -292,6 +335,29 @@ There is no face detection: OpenCV 5 removed the Haar classifier API, and its
 replacement needs a model file downloaded into the project. Edge density finds
 portrait subjects well enough, because eyes, hair and clothing carry far more
 detail than a backdrop.
+
+**On putting a neural network in here.** A generative model — the kind that
+"enhances" a photo by redrawing it — is the wrong tool, and not because of
+cost. It invents detail that was never in the frame: on a bookshop interior it
+redraws faces and turns the text on book spines into plausible gibberish. That
+is fabrication, not editing, and it makes the export useless as a photograph.
+A *discriminative* model, which only labels pixels and never paints any, would
+be a genuine addition: it could lift the people out of shadow without lifting
+the wall behind them. `u2netp` was measured for this (4.4MB, loads in
+`cv2.dnn`, 163ms at 320×320). It isolated an island cleanly but found only
+1–4% of two busy interiors as a vague blob — correct behaviour for a model
+built to find one subject on a simple background, and not yet worth the
+download.
+
+**An exported photo keeps its camera data.** Camera, lens, date, ISO, shutter
+and aperture are carried across, so the result can be captioned and sorted.
+Two tags are deliberately left behind: the orientation flag, because the image
+has already been rotated upright and a viewer applying it again would lay the
+photo on its side, and the embedded preview thumbnail, which still shows the
+*unedited* photo and is what a file browser displays. Exports are also written
+at full colour resolution (4:4:4) rather than JPEG's usual half, which nobody
+notices on a snapshot and everybody notices as a soft fringe along a saturated
+edge in a graded one.
 
 Double-click a slider to reset just that one; **Reset edits** clears them all.
 **Undo** and **Redo** step through committed changes (`Cmd/Ctrl+Z`, add Shift to
@@ -327,10 +393,8 @@ cannot be parsed is listed with the reason rather than silently skipped.
 ### Tests
 
 ```bash
-.venv/bin/python tests/test_lut.py
-.venv/bin/python tests/test_edit.py
-.venv/bin/python tests/test_recipes.py
-.venv/bin/python tests/test_masks.py
+.venv/bin/python tests/run_all.py        # everything
+.venv/bin/python tests/test_edit.py      # or one file at a time
 ```
 
 Plain asserts, no test framework. Covers the `.cube` parser, an identity LUT
@@ -339,6 +403,11 @@ OpenCV's BGR and the file's RGB, and the URL traversal guard. The editor tests
 check that one stop of exposure doubles the light, that vibrance spares
 already-saturated colour, that shadows and highlights only move their own end
 of the range, and that LUT strength blends.
+
+Three of them exist because something went wrong and must not come back: that
+the tone controls never invert the order of tones or fuse two tones into one,
+that a detail slider means the same thing at 500px and at 2000px, and that
+auto never pushes a frame to white in order to brighten it.
 
 ### The command line
 
