@@ -98,16 +98,14 @@ a:hover { color: var(--void); background: var(--volt); }
 
 ::selection { background: var(--chalk); color: #fff; }
 
-/* Chromatic-aberration glitch on big headings. */
-.glitch { position: relative; display: inline-block; }
-.glitch::before, .glitch::after {
-  content: attr(data-text);
-  position: absolute; inset: 0; pointer-events: none;
+/* Headings are screen-printed, not glitched: one hard offset in the second
+   colour, the way a misregistered poster looks. No blur, no fringe. */
+.glitch {
+  position: relative; display: inline-block;
+  color: var(--chalk);
+  text-shadow: 4px 4px 0 var(--volt);
 }
-.glitch::before { color: var(--volt); transform: translate(-2px, 0); clip-path: inset(0 0 55% 0); opacity: 0.85; }
-.glitch::after  { color: var(--chalk);    transform: translate(2px, 0);  clip-path: inset(55% 0 0 0); opacity: 0.85; }
-.glitch:hover::before { transform: translate(-4px, -1px); }
-.glitch:hover::after  { transform: translate(4px, 1px); }
+.glitch:hover { text-shadow: 6px 6px 0 var(--volt); }
 
 /* ---------------- layout ---------------- */
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 var(--s5); }
@@ -120,19 +118,18 @@ a:hover { color: var(--void); background: var(--volt); }
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--line);
 }
+/* A single solid rule. The dashes read as a loading bar rather than a divider. */
 .nav::after {
   content: ""; display: block; height: 2px;
-  background: repeating-linear-gradient(90deg,
-    var(--volt) 0 12px, transparent 12px 20px,
-    var(--chalk) 20px 26px, transparent 26px 44px);
-  opacity: 0.8;
+  background: linear-gradient(90deg, var(--volt) 0 42%, var(--volt-dim) 100%);
 }
 .nav-inner { display: flex; align-items: center; gap: var(--s5); height: 52px; }
 .brand {
+  display: inline-flex; align-items: center; gap: var(--s3);
   font-weight: 700; font-size: 14px; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--ink);
 }
-.brand::before { content: "▚ "; color: var(--volt); }
+.brand-mark { width: 18px; height: 18px; flex: 0 0 auto; shape-rendering: crispEdges; }
 .brand:hover { background: none; color: var(--volt); }
 .nav-links { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
 .nav-links a {
@@ -255,6 +252,7 @@ a:hover { color: var(--void); background: var(--volt); }
 .dash { padding: var(--s6) 0 var(--s9); }
 .dash-head { display: flex; align-items: flex-end; gap: var(--s5); flex-wrap: wrap; margin-bottom: var(--s6); }
 .dash-head h1 { font-size: clamp(26px, 4vw, 38px); }
+.dash-head .glitch { text-shadow: 3px 3px 0 var(--volt); }
 
 .stats { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .stat { padding: var(--s4); background: var(--surface-2); border: 1px solid var(--line); }
@@ -523,7 +521,6 @@ input[type="number"]:focus, .select:focus { outline: none; border-color: var(--v
 
 /* Reduced motion: drop the glitch offsets. */
 @media (prefers-reduced-motion: reduce) {
-  .glitch::before, .glitch::after { display: none; }
   * { transition-duration: 1ms !important; }
 }
 
@@ -647,11 +644,10 @@ input[type="number"]:focus, .select:focus { outline: none; border-color: var(--v
 }
 
 /* Heavy outlined headings, as on the wheatpaste posters. */
-.hero-title .glitch, .hero-title-alt {
-  -webkit-text-stroke: 1px var(--chalk);
-  paint-order: stroke fill;
+.hero-title-alt {
+  color: var(--volt);
+  text-shadow: 4px 4px 0 rgba(255, 255, 255, 0.18);
 }
-.hero-title-alt { color: var(--volt); }
 
 /* Empty states read as a system dialog rather than a web page. */
 .empty h3 { color: var(--volt); }

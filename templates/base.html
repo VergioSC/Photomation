@@ -9,7 +9,16 @@
 <body>
   <nav class="nav">
     <div class="wrap nav-inner">
-      <a class="brand" href="{{ url_for('landing') }}">Photomation</a>
+      <a class="brand" href="{{ url_for('landing') }}">
+        <svg class="brand-mark" viewBox="0 0 12 12" aria-hidden="true">
+          <!-- registration-bracket frame: the corner marks used on every panel,
+               closed into a viewfinder, with the sensor lit. -->
+          <path d="M0 0h5v2H2v3H0V0zM7 0h5v5h-2V2H7V0zM0 7h2v3h3v2H0V7zM10 7h2v5H7v-2h3V7z"
+                fill="currentColor"/>
+          <rect x="4" y="4" width="4" height="4" fill="var(--volt)"/>
+        </svg>
+        <span>Photomation</span>
+      </a>
       <div class="nav-links">
         <a href="{{ url_for('landing') }}" {% if active == 'home' %}class="active"{% endif %}>Overview</a>
         <a href="{{ url_for('dashboard') }}" {% if active == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
