@@ -443,12 +443,28 @@
   const uploadFill = el("upload-fill");
   const uploadList = el("upload-list");
 
-  function upload(files) {
+  async function upload(files) {
     const chosen = [...files];
     if (!chosen.length) return;
 
+    // Only worth asking when there is something to replace. On an empty
+    // folder - which is how the server starts - this never appears.
+    let replace = false;
+    if (state.photos.length) {
+      const answer = await window.ask(
+        "New shoot, or more of this one?",
+        `There ${state.photos.length === 1 ? "is" : "are"} already ` +
+        `${state.photos.length} photo${state.photos.length === 1 ? "" : "s"} ` +
+        `in this batch. Starting a new one moves them, and the keep/reject ` +
+        `sort and any export, to output/.trash - nothing is deleted.`,
+        ["Start a new batch", "Add to this batch"]);
+      if (answer === null) return;                   // dismissed: do nothing
+      replace = answer === "Start a new batch";
+    }
+
     const form = new FormData();
     for (const f of chosen) form.append("photos", f);
+    if (replace) form.append("replace", "1");
 
     uploadTrack.classList.remove("hidden");
     uploadFill.style.width = "0%";
@@ -469,6 +485,7 @@
         uploadTrack.classList.add("hidden");
         return;
       }
+      if (data.cleared) note(`Moved ${data.cleared} file(s) from the last batch to output/.trash.`);
       if (data.saved.length) note(`Added ${data.saved.length} photo${data.saved.length === 1 ? "" : "s"}.`);
       for (const r of data.rejected || []) note(`${r.name}: ${r.reason}`, true);
       uploadTrack.classList.add("hidden");
@@ -487,6 +504,20 @@
     line.textContent = text;
     uploadList.append(line);
   }
+
+  el("new-batch").addEventListener("click", async () => {
+    const answer = await window.ask(
+      "Start a new batch?",
+      "The photos in this batch, the keep/reject sort and any export are " +
+      "moved to output/.trash. Nothing is deleted, so this can be undone by " +
+      "hand, but the dashboard starts empty.",
+      ["Start a new batch", "Cancel"]);
+    if (answer !== "Start a new batch") return;
+    const reply = await fetch("/api/new-batch", { method: "POST" });
+    const data = await reply.json();
+    note(`Moved ${data.moved} file(s) to ${data.trash}.`);
+    scan();
+  });
 
   el("pick").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => { upload(fileInput.files); fileInput.value = ""; });

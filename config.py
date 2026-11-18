@@ -51,6 +51,13 @@ THUMB_SIZE = 480
 # used. Override with PHOTOMATION_CACHE_MB.
 CACHE_LIMIT_MB = int(os.environ.get("PHOTOMATION_CACHE_MB", "512"))
 
+# A batch is one shoot. Starting the server starts a new one, so a session does
+# not open on the photos from the last shoot. Nothing is deleted - the old
+# batch is moved to output/.trash. Set PHOTOMATION_KEEP_BATCH=1 to carry the
+# previous batch over instead, which is what you want if the server crashed
+# in the middle of one.
+CLEAR_ON_START = os.environ.get("PHOTOMATION_KEEP_BATCH", "") not in ("1", "true", "yes")
+
 # Longest side of the editor's preview. It is shown large on a Retina screen,
 # where CSS pixels are doubled, so a 480px thumbnail was being blown up about
 # five times and looked pixellated.

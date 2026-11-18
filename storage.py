@@ -12,6 +12,7 @@ the Flask app never touches a filesystem path directly.
 """
 
 import hashlib
+import pathlib
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +91,30 @@ def _prune_cache(thumb_dir):
             total -= size
         except OSError:
             pass
+
+
+def clear_batch(input_dir, output_dir):
+    """Empty the whole working set: the photos AND everything made from them.
+
+    A batch is one shoot. Leaving the last one in input/ means the next session
+    opens on 62 photos nobody asked for, and the keep/reject folders still hold
+    a sort that belongs to a shoot that is finished.
+
+    Nothing is deleted. Every file is MOVED to output/.trash, because these
+    folders look like a safe place to drop a favourite and are not ours to
+    erase. Returns how many files were moved.
+    """
+    moved = 0
+    folders = [pathlib.Path(input_dir)]
+    folders += [pathlib.Path(output_dir) / name for name in ("keep", "reject", "graded")]
+    for folder in folders:
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.iterdir()):
+            if path.is_file() and path.suffix.lower() in cull.EXTENSIONS:
+                trash_file(path, output_dir)
+                moved += 1
+    return moved
 
 
 def trash_file(path, output_dir):

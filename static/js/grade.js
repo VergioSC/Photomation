@@ -38,6 +38,9 @@
     edits: new Map(),
     sizes: new Map(),        // filename -> original width/height ratio
     autoOnOpen: true,
+    /* False as soon as an edit is made, true again once Export all has
+       written every photo out. Leaving the page with it false loses work. */
+    exported: true,
     /* Undo stack for the photo on screen. Snapshots are pushed when a change
        is COMMITTED (a slider released, a preset clicked), not on every pixel
        of a drag, or one slider sweep would bury the stack. */
@@ -111,6 +114,7 @@
     if (!state.current) return;
     const values = { ...state.values };
     for (const k of UI_ONLY) delete values[k];
+    state.exported = false;          // this edit has not been written out yet
     state.edits.set(state.current, {
       values,
       film: state.film,
@@ -693,6 +697,7 @@
         }
       }
       const extra = autoed ? `, ${autoed} auto-adjusted for you` : "";
+      if (!failed) state.exported = true;
       toast(failed ? `Exported ${total - failed} of ${total}; ${failed} failed`
                    : `Exported ${total} photo${total === 1 ? "" : "s"}${extra}.`);
     } catch (err) {
@@ -728,6 +733,49 @@
   ui.select.addEventListener("change", () => { syncStrengthRow(); schedulePreview(); });
   ui.reset.addEventListener("click", resetAll);
   ui.export.addEventListener("click", exportAll);
+
+  /* ---------------- leaving with work unsaved ---------------- */
+
+  /* Edits live in this page and nowhere else. Navigating away throws them
+     away silently, which is a bad way to find out how the tool works. */
+  function unsavedCount() {
+    if (state.exported || state.exporting) return 0;
+    let n = 0;
+    for (const e of state.edits.values()) if (e.touched) n += 1;
+    return n;
+  }
+
+  /* The in-app links are ours, so they get the real question with the real
+     way out: export first, and then go. */
+  for (const link of document.querySelectorAll(".nav-links a, .brand")) {
+    link.addEventListener("click", async (event) => {
+      const n = unsavedCount();
+      if (!n) return;
+      event.preventDefault();
+      const answer = await window.ask(
+        "Your edits are not exported",
+        `${n} photo${n === 1 ? " has" : "s have"} edits that exist only on ` +
+        `this page. Leaving resets every slider to its default. Exporting ` +
+        `writes them to output/graded first.`,
+        ["Export, then leave", "Leave without exporting", "Stay here"]);
+      if (answer === "Export, then leave") {
+        await exportAll();
+        if (!state.exported) return;        // export failed: stay put
+      } else if (answer !== "Leave without exporting") {
+        return;
+      }
+      window.location.href = link.href;
+    });
+  }
+
+  /* Closing the tab or reloading cannot be intercepted with our own dialog:
+     browsers only allow their own, and ignore any text we pass. It is still
+     worth having, because it is the one that catches an accidental Cmd+W. */
+  window.addEventListener("beforeunload", (event) => {
+    if (!unsavedCount()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
   ui.compare.addEventListener("change", () => {
     ui.beforeWrap.classList.toggle("hidden", !ui.compare.checked);
     el("after-tag").classList.toggle("hidden", !ui.compare.checked);

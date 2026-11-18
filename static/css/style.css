@@ -745,3 +745,37 @@ input[type="checkbox"]:focus-visible { outline: 2px solid var(--sky); outline-of
 }
 
 .recipe-btn.active .recipe-chip { border-color: var(--volt); }
+
+/* One dialog, used for anything that must be confirmed before it happens.
+   Native <dialog>, so Escape, focus trapping and the backdrop are the
+   browser's job and not ours to reimplement badly. */
+.ask {
+  max-width: 460px;
+  padding: var(--s5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.ask::backdrop { background: rgba(0, 0, 0, 0.72); }
+
+.ask h3 {
+  margin: 0 0 var(--s3);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--volt);
+}
+
+.ask p {
+  margin: 0 0 var(--s5);
+  color: var(--dialog);
+  line-height: 1.55;
+}
+
+.ask-actions {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

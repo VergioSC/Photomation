@@ -42,6 +42,16 @@ store = LocalStorage()
 # The grading step works on what survived culling, so it lists output/keep.
 keep_store = LocalStorage(input_dir=config.KEEP_DIR)
 
+# A batch is one shoot, and starting the server starts a new one. Without this
+# the dashboard opens on whatever was left in input/ from the last session and
+# scans 62 photos nobody asked for. Moved to output/.trash, never deleted, and
+# PHOTOMATION_KEEP_BATCH=1 turns it off for when a server died mid-shoot.
+if config.CLEAR_ON_START:
+    _cleared = storage_module.clear_batch(config.INPUT_DIR, config.OUTPUT_DIR)
+    if _cleared:
+        print(f"Started a new batch: moved {_cleared} file(s) from the last "
+              f"one to {config.OUTPUT_DIR / '.trash'}")
+
 
 @app.get("/")
 def landing():
@@ -573,6 +583,12 @@ def api_upload():
     if not uploaded:
         return jsonify({"error": "no files were sent"}), 400
 
+    # "replace" means these photos are a new shoot, not more of this one. The
+    # page asks which, and only when there is already a batch to replace.
+    cleared = 0
+    if request.form.get("replace") in ("1", "true", "yes"):
+        cleared = storage_module.clear_batch(config.INPUT_DIR, config.OUTPUT_DIR)
+
     config.INPUT_DIR.mkdir(parents=True, exist_ok=True)
     saved, rejected = [], []
     for item in uploaded:
@@ -593,8 +609,20 @@ def api_upload():
         item.save(target)
         saved.append(target.name)
 
-    return jsonify({"saved": saved, "rejected": rejected,
+    return jsonify({"saved": saved, "rejected": rejected, "cleared": cleared,
                     "total": len(store.list_photos())})
+
+
+@app.post("/api/new-batch")
+def api_new_batch():
+    """Finish with this shoot and start an empty one.
+
+    Clears the photos and everything made from them - the keep/reject sort and
+    any export - so the next shoot does not inherit half of the last one.
+    Every file is moved to output/.trash, so a mistake is recoverable.
+    """
+    moved = storage_module.clear_batch(config.INPUT_DIR, config.OUTPUT_DIR)
+    return jsonify({"moved": moved, "trash": str(config.OUTPUT_DIR / ".trash")})
 
 
 @app.post("/api/remove/<path:name>")

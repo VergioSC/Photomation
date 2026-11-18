@@ -38,6 +38,37 @@
       <p>PHOTOMATION v1 // blur-based culling + grading // your photos never leave this machine</p>
     </div>
   </footer>
+  <!-- One dialog for the whole app. Native <dialog> so Escape, focus trapping
+       and the backdrop come from the browser rather than from us. -->
+  <dialog class="ask" id="ask">
+    <h3 id="ask-title"></h3>
+    <p id="ask-body"></p>
+    <div class="ask-actions" id="ask-actions"></div>
+  </dialog>
+  <script>
+    /* ask("Title", "What is at stake", ["Do it", "Cancel"]) -> the label the
+       person clicked, or null if they dismissed it with Escape. The LAST
+       button is the safe one: it gets focus, and Escape picks it. */
+    window.ask = (title, body, labels) => new Promise((resolve) => {
+      const box = document.getElementById("ask");
+      document.getElementById("ask-title").textContent = title;
+      document.getElementById("ask-body").textContent = body;
+      const actions = document.getElementById("ask-actions");
+      actions.replaceChildren();
+      let answer = null;
+      labels.forEach((label, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn btn-small" + (i === labels.length - 1 ? " btn-secondary" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => { answer = label; box.close(); });
+        actions.append(b);
+      });
+      box.addEventListener("close", () => resolve(answer), { once: true });
+      box.showModal();
+      actions.lastElementChild?.focus();
+    });
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
