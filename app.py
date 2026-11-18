@@ -461,6 +461,57 @@ def api_recipes():
     })
 
 
+RECIPE_CELL = 128          # one preview tile in the contact sheet, square
+
+
+@app.get("/api/recipe-sheet/<path:name>")
+def api_recipe_sheet(name):
+    """Every recipe applied to one photo, as a single stacked image.
+
+    A list of 27 names tells you nothing about what a preset does to YOUR
+    photo, and 27 separate requests would queue up behind each other. So the
+    tiles are rendered into one column and sent as one picture; the page slices
+    it with background-position. Tiles are tiny, so the whole sheet costs about
+    as much as a single preview.
+
+    The order is the order /api/recipes returns, which is what the page indexes
+    into. Both come from recipes.load_all().
+    """
+    ref = keep_store.resolve(name)
+    if ref is None:
+        return jsonify({"error": "not found"}), 404
+    try:
+        raw = keep_store.scaled_bytes(ref, RECIPE_CELL * 3)
+    except cull.LoadError as exc:
+        return jsonify({"error": str(exc)}), 422
+    source = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if source is None:
+        return jsonify({"error": "could not decode the preview source"}), 422
+
+    # A square centre crop: a tile has to be the same shape for every photo or
+    # the sheet's rows stop lining up with the buttons.
+    height, width = source.shape[:2]
+    side = min(height, width)
+    top, left = (height - side) // 2, (width - side) // 2
+    tile = cv2.resize(source[top:top + side, left:left + side],
+                      (RECIPE_CELL, RECIPE_CELL), interpolation=cv2.INTER_AREA)
+
+    found, _ = recipes_module.load_all()
+    sheet = np.zeros((RECIPE_CELL * max(1, len(found)), RECIPE_CELL, 3), dtype=np.uint8)
+    for index, recipe in enumerate(found):
+        adj = recipe["adjustments"]
+        # Selective work needs masks this tile is far too small to estimate,
+        # and no recipe sets them anyway.
+        sheet[index * RECIPE_CELL:(index + 1) * RECIPE_CELL] = \
+            edit_module.apply_adjustments(tile, adj)
+
+    ok, buffer = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    if not ok:
+        return jsonify({"error": "could not encode the recipe sheet"}), 500
+    return Response(buffer.tobytes(), mimetype="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/films")
 def api_films():
     """The film looks a recipe or the user can choose from."""

@@ -723,3 +723,25 @@ input[type="checkbox"]:focus-visible { outline: 2px solid var(--sky); outline-of
 #auto-notes-group.stale .group-title::after {
   content: " — out of date"; color: var(--ink-3); letter-spacing: 0.04em;
 }
+
+/* A preset list of 27 names says nothing about what any of them does to the
+   photo in front of you. Each button carries a tile from one contact sheet
+   of the current photo: one request, 27 previews. */
+.recipe-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  text-align: left;
+}
+
+.recipe-chip {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  background-color: var(--neutral);
+  background-size: 34px auto;
+  background-repeat: no-repeat;
+  border: 1px solid var(--line);
+}
+
+.recipe-btn.active .recipe-chip { border-color: var(--volt); }

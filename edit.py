@@ -71,6 +71,7 @@ class Adjustments:
     grain_size: float = 1.0    # 1 = fine, 2 = coarse
     sharpen: float = 0.0       # -100 soften .. +100 sharpen
     film: str = ""             # a film look name from FILM_LOOKS, or "" for none
+    film_strength: float = 100.0  # how much of the film look to mix in, 0 .. 100
     lut_strength: float = 100.0  # how much of the LUT to mix in, 0 .. 100
 
     @classmethod
@@ -101,7 +102,7 @@ class Adjustments:
         return all(
             getattr(self, f.name) == f.default
             for f in fields(self)
-            if f.name not in ("lut_strength", "grain_size")
+            if f.name not in ("lut_strength", "film_strength", "grain_size")
         )
 
 
@@ -195,8 +196,13 @@ def apply_adjustments(image_bgr, adj, lut=None, scene=None):
 
     # The film look is the base character, so it goes on before the user's own
     # colour tweaks - exactly as a camera applies its simulation first.
-    if adj.film:
-        out = apply_film_look(out, adj.film)
+    if adj.film and adj.film_strength > 0:
+        looked = apply_film_look(out, adj.film)
+        # Partly applied, so one preset can be half a Velvia rather than all
+        # of it. Blended on the finished pixels, which is the only honest way
+        # to dilute a channel mixer and a tone curve together.
+        mix = min(adj.film_strength, 100.0) / 100.0
+        out = looked if mix >= 1.0 else cv2.addWeighted(looked, mix, out, 1.0 - mix, 0.0)
 
     if adj.clarity:
         out = _clarity(out, adj.clarity)

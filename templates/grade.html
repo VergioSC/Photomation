@@ -62,6 +62,9 @@
           <div class="control-group">
             <div class="group-title">Film recipe</div>
             <div class="recipe-list" id="recipe-list"></div>
+            <div class="slider-row" id="row-recipe-strength" data-key="recipe_strength"
+                 data-min="0" data-max="100" data-step="1" data-default="100"
+                 data-unit="%" hidden></div>
             <p class="caption" id="recipe-note"></p>
             <div class="skipped-list hidden" id="bad-recipes-panel">
               <div class="stat-label" style="margin-bottom: var(--s2)">Unreadable</div>
@@ -95,8 +98,12 @@
               <span class="field-label">LUT</span>
               <select id="lut-select" class="select"></select>
             </label>
+            <div class="slider-row" data-key="film_strength"
+                 data-min="0" data-max="100" data-step="1" data-default="100"
+                 data-unit="%"></div>
             <div class="slider-row" id="row-lut_strength" data-key="lut_strength"
-                 data-min="0" data-max="100" data-step="1" data-default="100">
+                 data-min="0" data-max="100" data-step="1" data-default="100"
+                 data-unit="%">
             </div>
             <div class="skipped-list hidden" id="bad-luts-panel">
               <div class="stat-label" style="margin-bottom: var(--s2)">Unreadable</div>

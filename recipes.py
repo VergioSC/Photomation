@@ -199,7 +199,10 @@ def load_all(folder=None):
             adj = build_adjustments(data)
             crop_aspect = data.get("crop_aspect")
             recipes.append({
-                "id": path.stem,
+                # The folder is part of the id: recipes/ is searched
+                # recursively, so two files called the same thing in
+                # different folders would otherwise be one recipe.
+                "id": path.relative_to(folder).with_suffix("").as_posix().replace("/", "-"),
                 "name": data["name"],
                 "group": data.get("group", "Film"),
                 "notes": data.get("notes", ""),

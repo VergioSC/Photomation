@@ -25,9 +25,14 @@
     zoom: el("zoom"), undo: el("undo"), redo: el("redo"),
   };
 
+  // Lives on the sliders for the UI's sake, but it is a control over the
+  // recipe, not a property of the photo, so it never goes to the server.
+  const UI_ONLY = new Set(["recipe_strength"]);
+
   const state = {
     photos: [], current: null, values: {}, exporting: false,
     film: "", recipe: null, crop: null, aspect: "",
+    recipeBase: null, recipeTarget: null,
     /* One edit per photo, keyed by filename. An edit belongs to a photo:
        brightening a dark frame should not brighten the one next to it. */
     edits: new Map(),
@@ -104,8 +109,10 @@
 
   function captureEdit() {
     if (!state.current) return;
+    const values = { ...state.values };
+    for (const k of UI_ONLY) delete values[k];
     state.edits.set(state.current, {
-      values: { ...state.values },
+      values,
       film: state.film,
       crop: state.crop ? [...state.crop] : null,
       recipe: state.recipe,
@@ -117,6 +124,12 @@
   function restoreEdit(name) {
     const saved = state.edits.get(name);
     if (!saved) return false;
+    // The strength the recipe was mixed at is already baked into these
+    // values. The control itself resets, because mixing again needs the
+    // slider positions from before the recipe, and those belong to the
+    // moment it was clicked, not to the photo.
+    state.recipeTarget = null;
+    setStrengthRow(100, false);
     setValues({ ...saved.values, film: saved.film });
     state.crop = saved.crop ? [...saved.crop] : null;
     state.aspect = saved.aspect || "";
@@ -142,7 +155,8 @@
     noise_reduction: "Noise reduction",
     clarity: "Clarity", structure: "Structure", grain: "Grain",
     sharpen: "Sharpen", vignette: "Vignette",
-    lut_strength: "Strength",
+    lut_strength: "LUT strength", film_strength: "Film strength",
+    recipe_strength: "Recipe strength",
   };
 
   function buildSliders() {
@@ -177,6 +191,12 @@
       input.addEventListener("input", () => {
         state.values[key] = Number(input.value);
         show();
+        if (key === "recipe_strength") {
+          // This one dilutes the recipe rather than being an edit of its own,
+          // so it must not clear the selection it is adjusting.
+          applyRecipeStrength(Number(input.value));
+          return;
+        }
         clearRecipeSelection();
         markNotesStale();
         captureEdit();
@@ -244,7 +264,9 @@
 
   function query(sizePx) {
     const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(state.values)) params.set(k, String(v));
+    for (const [k, v] of Object.entries(state.values)) {
+      if (!UI_ONLY.has(k)) params.set(k, String(v));
+    }
     params.set("lut", ui.select.value || "none");
     params.set("film", state.film || "");
     params.set("size", String(sizePx));
@@ -294,6 +316,7 @@
     for (const t of ui.filmstrip.children) {
       t.classList.toggle("edited", state.edits.has(t.dataset.name));
     }
+    refreshRecipeSheet();
 
     if (restoreEdit(name)) {
       resetHistory();
@@ -377,6 +400,21 @@
 
   /* ---------------- recipes and film looks ---------------- */
 
+  /* How tall one tile is on screen. The sheet is sent at 128px a tile, so
+     this has room to spare on a Retina display. */
+  const RECIPE_CHIP_PX = 34;
+
+  /* Point every preset button at the current photo, so the list shows what
+     each look does to THIS photo rather than to nothing. */
+  function refreshRecipeSheet() {
+    if (!state.current) return;
+    const url = `/api/recipe-sheet/${encodeURIComponent(state.current)}`;
+    for (const chip of ui.recipeList.querySelectorAll(".recipe-chip")) {
+      chip.style.backgroundImage = `url("${url}")`;
+    }
+  }
+
+
   async function loadFilms() {
     const data = await (await fetch("/api/films")).json();
     ui.filmSelect.replaceChildren();
@@ -395,10 +433,13 @@
     state.recipes = data.recipes;
     ui.recipeList.replaceChildren();
     const groups = new Map();
-    for (const r of data.recipes) {
+    data.recipes.forEach((r, index) => {
+      // Its row in the contact sheet. The groups below reorder the buttons,
+      // so the position in the sheet has to be remembered here.
+      r.sheetRow = index;
       if (!groups.has(r.group)) groups.set(r.group, []);
       groups.get(r.group).push(r);
-    }
+    });
     for (const [groupName, items] of groups) {
       const head = document.createElement("div");
       head.className = "recipe-group";
@@ -408,7 +449,12 @@
         const b = document.createElement("button");
         b.type = "button";
         b.className = "recipe-btn";
-        b.textContent = r.name;
+        const chip = document.createElement("span");
+        chip.className = "recipe-chip";
+        chip.style.backgroundPosition = `0 -${r.sheetRow * RECIPE_CHIP_PX}px`;
+        const text = document.createElement("span");
+        text.textContent = r.name;
+        b.append(chip, text);
         b.title = r.notes || r.name;
         b.dataset.id = r.id;
         b.addEventListener("click", () => applyRecipe(r));
@@ -438,6 +484,12 @@
     for (const key of recipe.sets || Object.keys(recipe.values)) {
       look[key] = recipe.values[key];
     }
+    // Remember what the sliders held before, so the strength control can mix
+    // between that and the recipe instead of only switching the look on.
+    state.recipeBase = {};
+    for (const key of Object.keys(look)) state.recipeBase[key] = state.values[key];
+    state.recipeTarget = look;
+    setStrengthRow(100, true);
     setValues(look);
     ui.recipeNote.textContent = recipe.notes || "";
     markNotesStale();
@@ -450,6 +502,35 @@
       b.classList.toggle("active", b.dataset.id === recipe.id);
     }
     schedulePreview();
+  }
+
+  /* Mix the selected recipe with whatever the sliders held before it.
+
+     At 100 it is the preset as written; at 40 it is a suggestion. Numbers
+     move proportionally, and the film look is diluted by its own strength,
+     because a channel mixer and a tone curve cannot be scaled any other way. */
+  function applyRecipeStrength(percent) {
+    if (!state.recipeTarget) return;
+    const mix = percent / 100;
+    const values = {};
+    for (const [key, target] of Object.entries(state.recipeTarget)) {
+      if (key === "film") { values.film = target; continue; }
+      const base = Number(state.recipeBase[key] ?? 0);
+      values[key] = base + (Number(target) - base) * mix;
+    }
+    if ("film" in state.recipeTarget) values.film_strength = percent;
+    setValues(values);
+    markNotesStale();
+    captureEdit();
+    schedulePreview();
+  }
+
+  /* Show the strength control only while a recipe is selected. */
+  function setStrengthRow(percent, visible) {
+    const row = el("row-recipe-strength");
+    if (!row) return;
+    row.hidden = !visible;
+    if (visible && typeof row._set === "function") row._set(percent);
   }
 
   /* Push a set of values into the sliders, film picker and state. */
@@ -474,6 +555,8 @@
 
   function clearRecipeSelection() {
     state.recipe = null;
+    state.recipeTarget = null;
+    setStrengthRow(100, false);
     for (const b of ui.recipeList.children) b.classList.remove("active");
   }
 
