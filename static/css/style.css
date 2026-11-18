@@ -435,6 +435,11 @@ input[type="number"]:focus, .select:focus { outline: none; border-color: var(--v
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
 }
+/* No corner marks on this one: it is its own scroll container, so an
+   absolutely positioned corner anchors to the bottom of the SCROLLED content
+   and drifts into the middle of the list instead of sitting in the corner. */
+.controls::before, .controls::after { display: none; }
+
 .controls::-webkit-scrollbar { width: 8px; }
 .controls::-webkit-scrollbar-track { background: transparent; }
 .controls::-webkit-scrollbar-thumb { background: var(--line); }
