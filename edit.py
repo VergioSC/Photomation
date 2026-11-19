@@ -158,6 +158,13 @@ def apply_regional(image_bgr, adj, scene):
         return image_bgr
 
     out = image_bgr
+    height, width = out.shape[:2]
+    # A band at a time. Done whole, this held the photo, an adjusted copy of it
+    # and the blend weights as full-resolution float32 at once: on a 24MP frame
+    # that is over 650MB and it was enough to get the process killed. Exposure
+    # and contrast are per-pixel, so a band gives exactly the same answer.
+    band_rows = max(1, 4_000_000 // max(1, width))
+
     for amount, mask, extra in (
         (adj.sky_exposure, scene.sky, {"contrast": adj.sky_contrast}),
         (adj.foreground_exposure, scene.foreground, {}),
@@ -168,11 +175,17 @@ def apply_regional(image_bgr, adj, scene):
             continue
         # Full scale is two stops: recovering a foreground that dehazing has
         # darkened routinely needs more than one.
-        layer = apply_adjustments(out, Adjustments(exposure=amount / 50.0, **extra))
-        blend = mask[:, :, None]
-        out = (out.astype(np.float32) * (1.0 - blend)
-               + layer.astype(np.float32) * blend)
-        out = np.clip(out, 0, 255).astype(np.uint8)
+        layer_adj = Adjustments(exposure=amount / 50.0, **extra)
+        blended = np.empty_like(out)
+        for top in range(0, height, band_rows):
+            rows = slice(top, min(height, top + band_rows))
+            source = out[rows]
+            layer = apply_adjustments(source, layer_adj)
+            weight = mask[rows][:, :, None]
+            blended[rows] = np.clip(
+                source.astype(np.float32) * (1.0 - weight)
+                + layer.astype(np.float32) * weight, 0, 255).astype(np.uint8)
+        out = blended
     return out
 
 

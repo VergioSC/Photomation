@@ -14,7 +14,11 @@
   <nav class="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="{{ url_for('landing') }}">
-        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <!-- Shifted viewBox, same reason as favicon.svg: counting the 1.9
+             stroke, this mark spans x 0.65-21.0 and y 0.8-20.35, so it sat
+             up and to the left of the middle. Margins were L0.65 R3.00
+             T0.80 B3.65 and are now even. -->
+        <svg class="brand-mark" viewBox="-1.18 -1.42 24 24" aria-hidden="true">
           <!-- Camera body drawn as one outline, lens filled in the accent, and
                the shutter button detached above the top-right corner. -->
           <path d="M1.6 19.4V7.2h6.15l0.7-1.8h4.1l0.7 1.8h6.15v12.2z"

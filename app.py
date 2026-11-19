@@ -268,23 +268,15 @@ def _preview_step(asked):
     return config.PREVIEW_STEPS[-1]
 
 
-def _crop_from_dict(data):
-    """Read a crop rectangle out of a JSON edit, or None."""
+def _crop_from(source):
+    """Read a crop rectangle out of a JSON edit or a query string, or None.
+
+    Both arrive as something that indexes by key and yields a string or a
+    number, so one reader covers them and they cannot drift apart.
+    """
     try:
-        rect = tuple(float(data[k]) for k in ("crop_x", "crop_y", "crop_w", "crop_h"))
+        rect = tuple(float(source[k]) for k in ("crop_x", "crop_y", "crop_w", "crop_h"))
     except (KeyError, TypeError, ValueError):
-        return None
-    x, y, w, h = rect
-    if w <= 0 or h <= 0 or w > 1 or h > 1:
-        return None
-    return (max(0.0, min(1.0, x)), max(0.0, min(1.0, y)), w, h)
-
-
-def _crop_from_args(args):
-    """Read a crop rectangle off a query string, or None."""
-    try:
-        rect = tuple(float(args[k]) for k in ("crop_x", "crop_y", "crop_w", "crop_h"))
-    except (KeyError, ValueError):
         return None
     x, y, w, h = rect
     if w <= 0 or h <= 0 or w > 1 or h > 1:
@@ -344,7 +336,7 @@ def api_preview(name):
     if source is None:
         return jsonify({"error": "could not decode the preview source"}), 422
 
-    source = edit_module.crop_image(source, _crop_from_args(request.args))
+    source = edit_module.crop_image(source, _crop_from(request.args))
     adj = _adjustments_from_args(request.args)
     # Masks cost real time, so they are only worked out when a selective
     # slider is actually asking for them.
@@ -413,7 +405,7 @@ def api_grade():
                     source = "auto"
                 else:
                     adj = edit_module.Adjustments.from_dict(own or {})
-                    crop = _crop_from_dict(own or {})
+                    crop = _crop_from(own or {})
                     source = "yours" if own else "untouched"
 
                 image = edit_module.crop_image(image, crop)
@@ -623,58 +615,6 @@ def api_new_batch():
     """
     moved = storage_module.clear_batch(config.INPUT_DIR, config.OUTPUT_DIR)
     return jsonify({"moved": moved, "trash": str(config.OUTPUT_DIR / ".trash")})
-
-
-@app.post("/api/remove/<path:name>")
-def api_remove(name):
-    """Take a photo out of the input folder.
-
-    It is MOVED to output/.trash rather than deleted, so a misclick cannot
-    lose a picture.
-    """
-    ref = store.resolve(name)
-    if ref is None:
-        return jsonify({"error": "not found"}), 404
-    target = storage_module.trash_file(ref.path, config.OUTPUT_DIR)
-    return jsonify({"moved_to": str(target), "remaining": len(store.list_photos())})
-
-
-BUCKETS = {"keep": None, "reject": None, "graded": None}
-
-
-def _bucket_dir(bucket):
-    if bucket not in BUCKETS:
-        return None
-    return config.OUTPUT_DIR / bucket
-
-
-@app.get("/api/files/<bucket>")
-def api_files(bucket):
-    """What is in one output folder, for the download list."""
-    folder = _bucket_dir(bucket)
-    if folder is None:
-        return jsonify({"error": "unknown folder"}), 404
-    if not folder.is_dir():
-        return jsonify({"bucket": bucket, "files": []})
-    files = [
-        {"name": p.name, "size_bytes": p.stat().st_size}
-        for p in sorted(folder.iterdir())
-        if p.is_file() and p.suffix.lower() in cull.EXTENSIONS
-    ]
-    return jsonify({"bucket": bucket, "files": files})
-
-
-@app.get("/api/file/<bucket>/<path:name>")
-def api_file(bucket, name):
-    """Download one finished photo."""
-    folder = _bucket_dir(bucket)
-    if folder is None:
-        return jsonify({"error": "unknown folder"}), 404
-    # Matched against the listing, never joined, so the name cannot escape.
-    for path in folder.iterdir() if folder.is_dir() else []:
-        if path.is_file() and path.name == name:
-            return send_file(path, as_attachment=True, download_name=name)
-    return jsonify({"error": "not found"}), 404
 
 
 @app.get("/api/download/<bucket>")

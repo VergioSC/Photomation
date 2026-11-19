@@ -82,6 +82,35 @@ def test_auto_splits_a_landscape_but_not_an_interior():
     assert inside.foreground_exposure == 0 and inside.sky_exposure == 0
 
 
+def test_regional_bands_give_the_same_answer_as_one_pass():
+    """Blending a band at a time must not change the result, only the memory.
+
+    Done in one go it held the photo, an adjusted copy and the blend weights
+    as full-resolution float32 at once - over 650MB on a 24MP frame, which was
+    enough to get the process killed.
+    """
+    rng = np.random.default_rng(4)
+    img = cv2.GaussianBlur(rng.integers(40, 200, (700, 1100, 3), dtype=np.uint8), (0, 0), 2)
+    img[:240] = np.clip(img[:240].astype(int) + 55, 0, 255).astype(np.uint8)
+    scene = masks.analyse(img)
+    adj = edit.Adjustments(sky_exposure=-40, foreground_exposure=30, sky_contrast=15)
+
+    got = edit.apply_regional(img, adj, scene)
+
+    # The same thing written the obvious way, on the whole frame at once.
+    want = img
+    for amount, mask, extra in ((adj.sky_exposure, scene.sky, {"contrast": adj.sky_contrast}),
+                                (adj.foreground_exposure, scene.foreground, {})):
+        layer = edit.apply_adjustments(want, edit.Adjustments(exposure=amount / 50.0, **extra))
+        weight = mask[:, :, None]
+        want = np.clip(want.astype(np.float32) * (1.0 - weight)
+                       + layer.astype(np.float32) * weight, 0, 255).astype(np.uint8)
+
+    assert np.array_equal(got, want), (
+        f"banding changed the result by up to "
+        f"{int(np.abs(got.astype(int) - want.astype(int)).max())}")
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

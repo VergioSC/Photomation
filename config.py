@@ -65,7 +65,6 @@ PREVIEW_SIZE = int(os.environ.get("PHOTOMATION_PREVIEW_PX", "1400"))
 
 # A smaller render used while a slider is moving, swapped for the full-size one
 # once it settles. Keeps dragging responsive without leaving the result soft.
-PREVIEW_DRAFT_SIZE = 700
 
 # Guard rails for the size a browser may ask for.
 PREVIEW_MIN, PREVIEW_MAX = 240, 2400

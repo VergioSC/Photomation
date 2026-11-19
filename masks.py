@@ -26,39 +26,31 @@ WORK_SIZE = 384
 
 @dataclass
 class SceneMasks:
-    """Soft masks, each the same size as the photo, values 0..1."""
+    """Soft masks, the same size as the photo, values 0..1."""
 
     sky: np.ndarray
-    foreground: np.ndarray
-    subject: np.ndarray
-    backend: str = "classical"
+
+    @property
+    def foreground(self):
+        # Derived, not stored: on a 24MP photo a second full-resolution float
+        # array is 96MB for a value that is one subtraction away.
+        return 1.0 - self.sky
 
     @property
     def has_sky(self):
         return float(self.sky.mean()) > 0.03
 
-    def summary(self):
-        return (f"sky {self.sky.mean() * 100:.0f}% of frame, "
-                f"subject {self.subject.mean() * 100:.0f}%")
 
-
-def analyse(image_bgr, backend="classical"):
+def analyse(image_bgr):
     """Return SceneMasks for a BGR image."""
     height, width = image_bgr.shape[:2]
     scale = WORK_SIZE / max(height, width)
     small = (cv2.resize(image_bgr, (max(1, int(width * scale)), max(1, int(height * scale))),
                         interpolation=cv2.INTER_AREA) if scale < 1 else image_bgr)
 
-    sky_small = estimate_classical_sky(small)
-    subject_small = estimate_subject(small, sky_small)
-
-    def up(mask):
-        full = cv2.resize(mask, (width, height), interpolation=cv2.INTER_LINEAR)
-        return np.clip(full, 0.0, 1.0).astype(np.float32)
-
-    sky = up(sky_small)
-    return SceneMasks(sky=sky, foreground=1.0 - sky, subject=up(subject_small),
-                      backend=backend)
+    sky = cv2.resize(estimate_classical_sky(small), (width, height),
+                     interpolation=cv2.INTER_LINEAR)
+    return SceneMasks(sky=np.clip(sky, 0.0, 1.0).astype(np.float32))
 
 
 def estimate_classical_sky(small_bgr):
@@ -108,24 +100,7 @@ def estimate_classical_sky(small_bgr):
     mask = np.clip((mask - 0.18) * 3.2, 0.0, 1.0)
 
     # Follow the real edge between sky and land rather than a blurred guess.
-    guide = cv2.cvtColor(small_bgr, cv2.COLOR_BGR2GRAY)
-    mask = cv2.ximgproc.guidedFilter(guide, mask, 12, 1e-3) if hasattr(cv2, "ximgproc") \
-        else cv2.bilateralFilter(mask, 9, 0.2, 9)
+    # (A guided filter would be better here, but it lives in cv2.ximgproc,
+    # which is not in the opencv-python-headless build this project pins.)
+    mask = cv2.bilateralFilter(mask, 9, 0.2, 9)
     return np.clip(mask, 0.0, 1.0).astype(np.float32)
-
-
-def estimate_subject(small_bgr, sky_mask):
-    """Where the interest is: detailed, central, and not sky."""
-    grey = cv2.cvtColor(small_bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    detail = cv2.magnitude(cv2.Sobel(grey, cv2.CV_32F, 1, 0, ksize=3),
-                           cv2.Sobel(grey, cv2.CV_32F, 0, 1, ksize=3))
-    detail = cv2.GaussianBlur(detail, (0, 0), max(small_bgr.shape[:2]) / 28.0)
-    if detail.max() > 1e-6:
-        detail /= detail.max()
-
-    height, width = grey.shape
-    ys = np.linspace(-1, 1, height, dtype=np.float32)[:, None]
-    xs = np.linspace(-1, 1, width, dtype=np.float32)[None, :]
-    centre = np.exp(-(xs ** 2 + ys ** 2) * 0.9)
-
-    return np.clip(detail * centre * (1.0 - sky_mask), 0.0, 1.0).astype(np.float32)
