@@ -110,6 +110,37 @@
     syncHistoryButtons();
   }
 
+  /* Edits are saved to output/edits.json beside the photos they describe.
+     They used to live only in this page, so a reload - or closing the laptop
+     - threw away every slider on every photo. Debounced, because a slider
+     drag fires this on every pixel. */
+  let saveTimer = null;
+
+  function saveEdits() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch("/api/edits", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ edits: Object.fromEntries(state.edits) }),
+      }).catch(() => toast("Could not save your edits to disk."));
+    }, 700);
+  }
+
+  async function loadEdits() {
+    try {
+      const data = await (await fetch("/api/edits")).json();
+      for (const [name, edit] of Object.entries(data.edits || {})) {
+        state.edits.set(name, edit);
+      }
+      const n = state.edits.size;
+      if (n) {
+        state.exported = false;
+        toast(`Picked up where you left off: ${n} photo${n === 1 ? "" : "s"} already edited.`);
+      }
+    } catch { /* no saved edits is the normal case */ }
+  }
+
   function captureEdit() {
     if (!state.current) return;
     const values = { ...state.values };
@@ -123,6 +154,7 @@
       aspect: state.aspect,
       touched: true,
     });
+    saveEdits();
   }
 
   function restoreEdit(name) {
@@ -644,7 +676,7 @@
     return out;
   }
 
-  async function exportAll() {
+  async function exportAll(only) {
     if (state.exporting) return;
     state.exporting = true;
     ui.export.disabled = true;
@@ -664,6 +696,9 @@
           lut: ui.select.value || "none",
           resize: Number(ui.resizeSelect.value) || 0,
           auto_fill: state.autoOnOpen,
+          // Present only when exporting one photo, so the server knows not to
+          // clear the other fifty-five already in output/graded.
+          ...(only ? { only } : {}),
         }),
       });
       if (!response.ok) {
@@ -697,7 +732,8 @@
         }
       }
       const extra = autoed ? `, ${autoed} auto-adjusted for you` : "";
-      if (!failed) state.exported = true;
+      // One photo is not the whole set, so the rest are still unexported.
+      if (!failed && !only) state.exported = true;
       toast(failed ? `Exported ${total - failed} of ${total}; ${failed} failed`
                    : `Exported ${total} photo${total === 1 ? "" : "s"}${extra}.`);
     } catch (err) {
@@ -732,7 +768,38 @@
 
   ui.select.addEventListener("change", () => { syncStrengthRow(); schedulePreview(); });
   ui.reset.addEventListener("click", resetAll);
-  ui.export.addEventListener("click", exportAll);
+  ui.export.addEventListener("click", () => exportAll());
+
+  el("export-one").addEventListener("click", () => {
+    if (!state.current) return;
+    captureEdit();
+    exportAll([state.current]);
+  });
+
+  /* Spotting a bad frame while editing used to mean going back to Cull and
+     starting the sort again. */
+  el("bin-photo").addEventListener("click", async () => {
+    const name = state.current;
+    if (!name) return;
+    const answer = await window.ask(
+      "Bin this photo?",
+      `${name} moves from the keepers to output/reject and leaves the editor. ` +
+      `Nothing is deleted, and Cull can put it back.`,
+      ["Bin it", "Cancel"]);
+    if (answer !== "Bin it") return;
+
+    const reply = await fetch(`/api/reject/${encodeURIComponent(name)}`, { method: "POST" });
+    if (!reply.ok) { toast("Could not move that photo."); return; }
+    state.edits.delete(name);
+    saveEdits();
+    const at = state.photos.indexOf(name);          // a list of names, not objects
+    state.photos.splice(at, 1);
+    state.current = null;                            // or captureEdit re-adds it
+    buildFilmstrip();
+    if (state.photos.length) selectPhoto(state.photos[Math.min(at, state.photos.length - 1)]);
+    else window.location.href = "/dashboard";
+    toast(`${name} moved to the rejects.`);
+  });
 
   /* ---------------- leaving with work unsaved ---------------- */
 
@@ -829,7 +896,10 @@
   Promise.all([loadFilms(), loadRecipes()]).catch(() => {});
   fetch("/api/keepers")
     .then((r) => r.json())
-    .then((d) => {
+    .then(async (d) => {
+      // Before anything is opened, so a photo with a saved edit is restored
+      // rather than auto-adjusted from scratch.
+      await loadEdits();
       state.photos = d.photos || [];
       for (const s of d.sizes || []) {
         if (s.width && s.height) state.sizes.set(s.name, s.width / s.height);

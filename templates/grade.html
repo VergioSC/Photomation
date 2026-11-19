@@ -16,6 +16,9 @@
         <button class="btn btn-secondary btn-small" id="redo" disabled title="Redo (Cmd/Ctrl+Shift+Z)">Redo</button>
         <button class="btn btn-secondary btn-small" id="auto">Auto adjust</button>
         <button class="btn btn-secondary btn-small" id="copy-all">Copy to all</button>
+        <button class="btn btn-secondary btn-small" id="bin-photo"
+                title="Move this photo out of the keepers">Bin this one</button>
+        <button class="btn btn-secondary btn-small" id="export-one">Export this one</button>
         <button class="btn btn-secondary btn-small" id="reset">Reset edits</button>
         <a class="btn btn-secondary btn-small" id="download" href="/api/download/graded">Download zip</a>
         <button class="btn btn-small" id="export" disabled>Export all</button>
@@ -172,6 +175,8 @@
           </div>
 
           <p class="caption">
+            Edits are saved to <span class="mono">output/edits.json</span> as you
+            work, so closing the page does not lose them.
             Each photo keeps its own edit. Double-click a slider to reset it,
             or use Copy to all to give every photo this one. Photos you never
             open are auto-adjusted on export while "Auto on open" is ticked.

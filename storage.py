@@ -105,6 +105,12 @@ def clear_batch(input_dir, output_dir):
     erase. Returns how many files were moved.
     """
     moved = 0
+    # The saved edits describe this batch's photos, so they go with them.
+    edits = pathlib.Path(output_dir) / "edits.json"
+    if edits.is_file():
+        trash_file(edits, output_dir)
+        moved += 1
+
     folders = [pathlib.Path(input_dir)]
     folders += [pathlib.Path(output_dir) / name for name in ("keep", "reject", "graded")]
     for folder in folders:

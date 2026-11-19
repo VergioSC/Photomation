@@ -388,17 +388,26 @@ def api_grade():
         resize_to = 0
     auto_fill = bool(body.get("auto_fill", True))
 
+    only = body.get("only")
     refs = keep_store.list_photos()
+    if isinstance(only, list) and only:
+        wanted = set(only)
+        refs = [ref for ref in refs if ref.name in wanted]
+        if not refs:
+            return jsonify({"error": "none of those photos are in the keepers"}), 404
     graded_dir = config.OUTPUT_DIR / "graded"
 
     def generate():
         yield _sse({"type": "start", "total": len(refs)})
         graded_dir.mkdir(parents=True, exist_ok=True)
         # Clear the previous export first, or a photo you have since rejected
-        # stays in the folder and ships with the zip.
-        for stale in sorted(graded_dir.iterdir()):
-            if stale.is_file() and stale.suffix.lower() in cull.EXTENSIONS:
-                storage_module.trash_file(stale, config.OUTPUT_DIR)
+        # stays in the folder and ships with the zip. Not when only some photos
+        # were asked for: exporting one frame must not throw away the other
+        # fifty-five that are already done.
+        if not (isinstance(only, list) and only):
+            for stale in sorted(graded_dir.iterdir()):
+                if stale.is_file() and stale.suffix.lower() in cull.EXTENSIONS:
+                    storage_module.trash_file(stale, config.OUTPUT_DIR)
         for index, ref in enumerate(refs, start=1):
             try:
                 # Full resolution: an exported photo is the deliverable.
@@ -610,6 +619,100 @@ def api_upload():
 
     return jsonify({"saved": saved, "rejected": rejected, "cleared": cleared,
                     "total": len(store.list_photos())})
+
+
+EDITS_FILE = "edits.json"
+
+
+def _edits_path():
+    return config.OUTPUT_DIR / EDITS_FILE
+
+
+@app.get("/api/edits")
+def api_edits_read():
+    """The saved edits for this batch, keyed by filename.
+
+    Edits used to live only in the page, so a reload threw away every slider
+    on every photo. They belong with the batch, next to the photos they
+    describe.
+    """
+    try:
+        data = json.loads(_edits_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    return jsonify({"edits": data if isinstance(data, dict) else {}})
+
+
+@app.put("/api/edits")
+def api_edits_write():
+    """Replace the saved edits. The page sends the whole set, not a patch."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("edits"), dict):
+        return jsonify({"error": "expected an object with an 'edits' object"}), 400
+
+    config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Written beside the target and renamed: a half-written file here would
+    # lose an afternoon of work, and rename is atomic on the same filesystem.
+    target = _edits_path()
+    temporary = target.with_suffix(".json.part")
+    temporary.write_text(json.dumps(body["edits"], indent=1), encoding="utf-8")
+    temporary.replace(target)
+    return jsonify({"saved": len(body["edits"])})
+
+
+@app.post("/api/reject/<path:name>")
+def api_reject(name):
+    """Move one photo out of the keepers, from inside the editor.
+
+    Spotting a bad frame while editing used to mean going back to Cull and
+    starting the sort again.
+    """
+    ref = keep_store.resolve(name)
+    if ref is None:
+        return jsonify({"error": "not found"}), 404
+
+    reject_dir = config.OUTPUT_DIR / "reject"
+    reject_dir.mkdir(parents=True, exist_ok=True)
+    target = reject_dir / ref.path.name
+    if target.exists():
+        storage_module.trash_file(target, config.OUTPUT_DIR)
+    ref.path.rename(target)
+    return jsonify({"moved": ref.name, "to": "reject",
+                    "left": len(keep_store.list_photos())})
+
+
+@app.post("/api/empty-trash")
+def api_empty_trash():
+    """Delete everything in output/.trash, for real this time.
+
+    Every other destructive thing in this app moves files here instead of
+    deleting them, which means the folder only grows - it reached 671MB on the
+    machine this was written on. Emptying it is therefore the one genuinely
+    unrecoverable action in Photomation, and it is behind its own button and
+    its own confirmation.
+    """
+    trash = config.OUTPUT_DIR / ".trash"
+    removed, freed = 0, 0
+    if trash.is_dir():
+        for path in sorted(trash.iterdir()):
+            if not path.is_file():
+                continue
+            try:
+                freed += path.stat().st_size
+                path.unlink()
+                removed += 1
+            except OSError:
+                pass
+    return jsonify({"removed": removed, "freed_bytes": freed})
+
+
+@app.get("/api/trash")
+def api_trash():
+    """How much is sitting in the trash, so the button can say so."""
+    trash = config.OUTPUT_DIR / ".trash"
+    files = [p for p in trash.iterdir() if p.is_file()] if trash.is_dir() else []
+    return jsonify({"files": len(files),
+                    "bytes": sum(p.stat().st_size for p in files)})
 
 
 @app.post("/api/new-batch")

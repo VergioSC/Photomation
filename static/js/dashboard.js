@@ -690,6 +690,37 @@
     scan();
   });
 
+  /* Everything destructive in this app moves files to output/.trash instead
+     of deleting them, which means that folder only ever grows. Emptying it is
+     the one genuinely unrecoverable thing here, so it says how much it will
+     destroy and asks first. */
+  async function showTrash() {
+    const button = el("empty-trash");
+    try {
+      const data = await (await fetch("/api/trash")).json();
+      button.classList.toggle("hidden", !data.files);
+      button.dataset.files = data.files;
+      button.textContent = `Empty trash (${(data.bytes / 1e6).toFixed(0)} MB)`;
+      button.title = `${data.files} file(s) in output/.trash`;
+    } catch { button.classList.add("hidden"); }
+  }
+
+  el("empty-trash").addEventListener("click", async () => {
+    const button = el("empty-trash");
+    const answer = await window.ask(
+      "Empty the trash?",
+      `${button.dataset.files} file(s) in output/.trash are deleted permanently. ` +
+      `This is the only thing in Photomation that cannot be undone - every ` +
+      `other action moves files there rather than destroying them.`,
+      ["Delete them permanently", "Cancel"]);
+    if (answer !== "Delete them permanently") return;
+    const data = await (await fetch("/api/empty-trash", { method: "POST" })).json();
+    toast(`Deleted ${data.removed} file(s), freeing ${(data.freed_bytes / 1e6).toFixed(0)} MB.`);
+    showTrash();
+  });
+
+  showTrash();
+
   el("pick").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => { upload(fileInput.files); fileInput.value = ""; });
 
