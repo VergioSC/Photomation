@@ -51,6 +51,14 @@ def find_lut(argument):
     return cubes[0]
 
 
+def jpeg_quality(text):
+    """1-100. Pillow silently accepts 0 and 150 and writes something else."""
+    value = int(text)
+    if not 1 <= value <= 100:
+        raise argparse.ArgumentTypeError(f"{value} is outside 1-100")
+    return value
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog="grade.py",
@@ -69,7 +77,7 @@ def parse_args(argv):
                         help="skip the LUT and only auto-adjust")
     parser.add_argument("--size", type=int, default=0, metavar="PX",
                         help="longest side of the exported file (default: original)")
-    parser.add_argument("--quality", type=int, default=95, metavar="N",
+    parser.add_argument("--quality", type=jpeg_quality, default=95, metavar="1-100",
                         help="JPEG quality, 1-100 (default: 95)")
     args = parser.parse_args(argv[1:])
     if args.no_lut and not args.auto:

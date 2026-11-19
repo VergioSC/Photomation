@@ -59,6 +59,15 @@ def _require_password():
     credential store itself, and it covers images and streams that cannot
     carry a header of their own.
     """
+    # A plain HTML form posts across sites without the browser asking us
+    # first, so any page you have open could fire POST /api/empty-trash at
+    # 127.0.0.1 and permanently delete every file this app has ever moved
+    # aside. Browsers label that request; non-browser clients send no label
+    # at all, and they are not the attack.
+    if request.method not in ("GET", "HEAD", "OPTIONS") \
+            and request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return jsonify({"error": "cross-site request refused"}), 403
+
     if not config.PASSWORD or request.path == "/api/health":
         return None
     sent = request.authorization
@@ -717,6 +726,11 @@ def api_reject(name):
     if target.exists():
         storage_module.trash_file(target, config.OUTPUT_DIR)
     ref.path.rename(target)
+    # Its export has to go too, or Download keepers still ships the photo that
+    # was just rejected: a single-photo export does not clear output/graded.
+    stale = config.OUTPUT_DIR / "graded" / f"{ref.path.stem}.jpg"
+    if stale.exists():
+        storage_module.trash_file(stale, config.OUTPUT_DIR)
     return jsonify({"moved": ref.name, "to": "reject",
                     "left": len(keep_store.list_photos())})
 
@@ -746,6 +760,12 @@ def api_empty_trash():
     return jsonify({"removed": removed, "freed_bytes": freed})
 
 
+@app.get("/api/backend")
+def api_backend():
+    """Which storage this instance is running on, so the page can adapt."""
+    return jsonify({"backend": "s3" if isinstance(store, storage_s3.S3Storage) else "local"})
+
+
 @app.get("/api/trash")
 def api_trash():
     """How much is sitting in the trash, so the button can say so."""
@@ -763,6 +783,13 @@ def api_new_batch():
     any export - so the next shoot does not inherit half of the last one.
     Every file is moved to output/.trash, so a mistake is recoverable.
     """
+    # Under S3 the photos come from the bucket, so clearing them locally only
+    # means the next scan downloads them all again. Saying "moved 62 files"
+    # and changing nothing is worse than refusing.
+    if isinstance(store, storage_s3.S3Storage):
+        return jsonify({"error": "This batch comes from the bucket, so clearing "
+                                 "it here would only download it again. Move or "
+                                 "delete the objects in S3 instead."}), 409
     moved = storage_module.clear_batch(config.INPUT_DIR, config.OUTPUT_DIR)
     return jsonify({"moved": moved, "trash": str(config.OUTPUT_DIR / ".trash")})
 

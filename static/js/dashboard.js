@@ -99,6 +99,7 @@
         ui.scanLabel.textContent = "Scan complete";
         ui.apply.disabled = state.photos.length === 0;
         fitSliderRange();
+        measureFindings();
         render();
         setTimeout(() => ui.scanPanel.classList.add("hidden"), 1200);
       }
@@ -216,10 +217,22 @@
     photo.black > TOO_BLACK ? "mostly black"
       : photo.blown > TOO_BLOWN ? "blown out" : "";
 
+  /* Bursts and exposure depend on the photos, not on the threshold, so they
+     are worked out once when the scan finishes. render() runs on every tick
+     of the threshold slider, and regrouping every photo on each tick made the
+     slider sticky on a large shoot for no gain. */
+  let findings = { groups: [], dud: [] };
+
+  function measureFindings() {
+    findings = {
+      groups: findBursts(),
+      dud: state.photos.filter((p) => badExposure(p)),
+    };
+  }
+
   /* The line above the grids: what was found, and the one click that acts. */
-  function renderFindings() {
-    const groups = findBursts();
-    const dud = state.photos.filter((p) => badExposure(p));
+  function paintFindings() {
+    const { groups, dud } = findings;
     const box = el("findings");
     box.replaceChildren();
     box.classList.toggle("hidden", !groups.length && !dud.length);
@@ -235,6 +248,7 @@
             if (photo.burst && !photo.burst.pick) state.overrides.set(photo.name, "reject");
           }
           render();
+          toast(`${extra} frame${extra === 1 ? "" : "s"} binned.`);
         }));
     }
     if (dud.length) {
@@ -264,7 +278,7 @@
   }
 
   function render() {
-    renderFindings();
+    paintFindings();
     const keep = state.photos.filter((p) => bucketOf(p) === "keep");
     const reject = state.photos.filter((p) => bucketOf(p) !== "keep");
 
@@ -720,6 +734,14 @@
   });
 
   showTrash();
+
+  // Under S3 the photos come from the bucket, so "New batch" would clear them
+  // locally and the next scan would download them all again. The server
+  // refuses it; the button should not be there to press.
+  fetch("/api/backend")
+    .then((r) => r.json())
+    .then((d) => { if (d.backend === "s3") el("new-batch").classList.add("hidden"); })
+    .catch(() => {});
 
   el("pick").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => { upload(fileInput.files); fileInput.value = ""; });

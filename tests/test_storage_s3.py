@@ -72,8 +72,22 @@ def test_a_file_that_changed_size_is_fetched_again():
     store, client = storage({"shoot/a.jpg": b"hello"})
     store.sync_down()
     client.objects["shoot/a.jpg"] = b"hello, longer"
-    store.sync_down()
+    store.sync_down(force=True)
     assert len(client.downloaded) == 2, "a replaced object was not picked up"
+
+
+def test_a_burst_of_requests_lists_the_bucket_once():
+    """resolve() calls list_photos(), and every thumbnail calls resolve(), so
+    an unthrottled sync listed the whole bucket once per thumbnail: 56 full
+    listings to draw one grid, billed per thousand LIST requests."""
+    store, client = storage({"shoot/a.jpg": b"hello"})
+    calls = []
+    inner = client.list_objects_v2
+    client.list_objects_v2 = lambda **kw: (calls.append(1), inner(**kw))[1]
+
+    for _ in range(20):
+        store.resolve("a.jpg")
+    assert len(calls) == 1, f"{len(calls)} bucket listings for 20 lookups"
 
 
 def test_listing_follows_every_page():

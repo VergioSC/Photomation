@@ -839,6 +839,15 @@
      browsers only allow their own, and ignore any text we pass. It is still
      worth having, because it is the one that catches an accidental Cmd+W. */
   window.addEventListener("beforeunload", (event) => {
+    // Saving is debounced by 700ms, so a change made just before Cmd+W would
+    // never reach the disk. sendBeacon is built for exactly this: it survives
+    // the page going away, where fetch does not.
+    if (state.edits.size) {
+      clearTimeout(saveTimer);
+      navigator.sendBeacon("/api/edits", new Blob(
+        [JSON.stringify({ edits: Object.fromEntries(state.edits) })],
+        { type: "application/json" }));
+    }
     if (!unsavedCount()) return;
     event.preventDefault();
     event.returnValue = "";

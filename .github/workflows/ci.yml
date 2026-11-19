@@ -24,7 +24,7 @@ jobs:
           pip install -r requirements.txt
           # Only the S3 tests need this, and they use a stub client rather
           # than a bucket, so no credentials are involved.
-          pip install boto3
+          pip install boto3==1.40.49
 
       - name: Run the tests
         run: python tests/run_all.py
@@ -56,7 +56,7 @@ jobs:
             # /api/health is deliberately not behind the password: an
             # orchestrator has no credentials and should not be given any.
             if curl -fsS http://127.0.0.1:5000/api/health; then
-              echo "\nhealthy"
+              printf '\nhealthy\n'
               exit 0
             fi
             sleep 2

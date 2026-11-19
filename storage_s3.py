@@ -20,6 +20,7 @@ Credentials come from the usual AWS chain - environment, ~/.aws, or the
 instance's own role - so none of them are ever read or stored by this app.
 """
 
+import time
 from pathlib import Path
 
 import config
@@ -37,6 +38,7 @@ class S3Storage(LocalStorage):
         # different keys in S3, and the difference is invisible in a console.
         self.prefix = (prefix.strip("/") + "/") if prefix.strip("/") else ""
         self._client = client
+        self._synced_at = 0.0
 
     @property
     def client(self):
@@ -68,7 +70,15 @@ class S3Storage(LocalStorage):
                 return found
             token = page.get("NextContinuationToken")
 
-    def sync_down(self):
+    # How long a listing is trusted for. resolve() calls list_photos(), and
+    # every thumbnail and preview calls resolve(), so without this a grid of
+    # 56 photos performed 56 full bucket listings per page load - slow, and
+    # billed per thousand LIST requests.
+    # shortcut: a photo added to the bucket appears within this many seconds
+    # rather than instantly; lower it if that matters more than the requests.
+    SYNC_EVERY_SECONDS = 30
+
+    def sync_down(self, force=False):
         """Fetch anything in the bucket that is not already here.
 
         Compared by size alone. An ETag is a better identity, but it is the
@@ -76,6 +86,9 @@ class S3Storage(LocalStorage):
         so a comparison that is right for small files and silently wrong for
         big ones is worse than one that is honestly approximate.
         """
+        if not force and time.monotonic() - self._synced_at < self.SYNC_EVERY_SECONDS:
+            return 0
+        self._synced_at = time.monotonic()
         self.input_dir.mkdir(parents=True, exist_ok=True)
         fetched = 0
         for key, size in self._keys():
