@@ -779,3 +779,45 @@ input[type="checkbox"]:focus-visible { outline: 2px solid var(--sky); outline-of
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+
+/* Things the scan noticed that a sharpness number cannot say: the same shot
+   fired ten times, and frames that are black or blown rather than dark or
+   bright. Each one comes with the single click that acts on it. */
+.findings {
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--s5);
+}
+
+.finding {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--volt);
+  color: var(--dialog);
+  font-size: 0.85rem;
+}
+
+.finding .btn { margin-left: auto; }
+
+/* The frame a burst is worth keeping. Marked on the card itself, so the
+   choice is visible in the grid rather than only in the badge. */
+.photo-pick { outline: 1px solid var(--volt-dim); outline-offset: -1px; }
+
+/* The verdict on the photo being judged, in the viewer's bar. Stated in
+   words rather than only a colour, so it survives a colour-blind reader and
+   a screenshot. */
+.viewer-verdict {
+  padding: 2px var(--s3);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+
+.viewer-verdict.is-keep { color: var(--volt); }
+.viewer-verdict.is-reject { color: var(--dialog); }

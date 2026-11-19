@@ -151,7 +151,120 @@
     });
   }
 
+  /* ---------------- bursts and exposure ---------------- */
+
+  /* Two frames count as the same shot when at most this many of the 64 bits
+     differ. Measured on a real shoot: five frames of one scene sat at 2-8
+     bits apart, and every unrelated frame was 23 or more. Anywhere in that
+     gap works; this sits in the middle of it. */
+  const BURST_BITS = 10;
+
+  /* More than this much of the frame crushed to black, or blown to white,
+     and the photo is a mistake rather than a dark or bright photograph. */
+  const TOO_BLACK = 0.55;
+  const TOO_BLOWN = 0.25;
+
+  const POPCOUNT = Array.from({ length: 256 }, (_, i) =>
+    (i & 1) + ((i >> 1) & 1) + ((i >> 2) & 1) + ((i >> 3) & 1) +
+    ((i >> 4) & 1) + ((i >> 5) & 1) + ((i >> 6) & 1) + ((i >> 7) & 1));
+
+  /* How many of the 64 bits differ. The hashes arrive as hex because a
+     JavaScript number cannot hold 64 bits of integer, so they are compared a
+     byte at a time. */
+  function bitsApart(a, b) {
+    if (!a || !b) return 64;
+    let n = 0;
+    for (let i = 0; i < 16; i += 2) {
+      n += POPCOUNT[parseInt(a.slice(i, i + 2), 16) ^ parseInt(b.slice(i, i + 2), 16)];
+    }
+    return n;
+  }
+
+  /* Group runs of consecutive photos that look like the same shot.
+
+     Consecutive on purpose: two similar frames from opposite ends of a shoot
+     are two photographs, not a burst, and chaining them would hide one of
+     them behind the other. Each group records the sharpest frame, which is
+     the one worth keeping.
+
+     Sets photo.burst = {id, index, size, pick} on every member. */
+  function findBursts() {
+    const groups = [];
+    let run = [];
+    const close = () => {
+      if (run.length > 1) groups.push(run);
+      run = [];
+    };
+    for (const photo of state.photos) {
+      delete photo.burst;
+      if (!run.length) { run = [photo]; continue; }
+      if (bitsApart(run[run.length - 1].signature, photo.signature) <= BURST_BITS) run.push(photo);
+      else { close(); run = [photo]; }
+    }
+    close();
+
+    groups.forEach((group, id) => {
+      const pick = group.reduce((best, p) => (p.score > best.score ? p : best), group[0]);
+      group.forEach((photo, index) => {
+        photo.burst = { id, index: index + 1, size: group.length, pick: photo === pick };
+      });
+    });
+    return groups;
+  }
+
+  const badExposure = (photo) =>
+    photo.black > TOO_BLACK ? "mostly black"
+      : photo.blown > TOO_BLOWN ? "blown out" : "";
+
+  /* The line above the grids: what was found, and the one click that acts. */
+  function renderFindings() {
+    const groups = findBursts();
+    const dud = state.photos.filter((p) => badExposure(p));
+    const box = el("findings");
+    box.replaceChildren();
+    box.classList.toggle("hidden", !groups.length && !dud.length);
+
+    if (groups.length) {
+      const extra = groups.reduce((n, g) => n + g.length - 1, 0);
+      box.append(finding(
+        `${groups.length} burst${groups.length === 1 ? "" : "s"}: ` +
+        `${extra} near-identical frame${extra === 1 ? "" : "s"} beyond the sharpest of each.`,
+        "Bin all but the sharpest",
+        () => {
+          for (const photo of state.photos) {
+            if (photo.burst && !photo.burst.pick) state.overrides.set(photo.name, "reject");
+          }
+          render();
+        }));
+    }
+    if (dud.length) {
+      box.append(finding(
+        `${dud.length} photo${dud.length === 1 ? " is" : "s are"} mostly black or blown out. ` +
+        `Sharpness does not catch these: a clipped edge is still a hard edge.`,
+        "Bin them",
+        () => {
+          for (const photo of dud) state.overrides.set(photo.name, "reject");
+          render();
+        }));
+    }
+  }
+
+  function finding(text, action, onClick) {
+    const row = document.createElement("div");
+    row.className = "finding";
+    const words = document.createElement("span");
+    words.textContent = text;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-secondary btn-small";
+    button.textContent = action;
+    button.addEventListener("click", onClick);
+    row.append(words, button);
+    return row;
+  }
+
   function render() {
+    renderFindings();
     const keep = state.photos.filter((p) => bucketOf(p) === "keep");
     const reject = state.photos.filter((p) => bucketOf(p) !== "keep");
 
@@ -231,7 +344,14 @@
     name.textContent = photo.name;
     card.querySelector(".photo-exif").textContent = photo.shot || "";
     const badge = card.querySelector(".photo-badge");
-    badge.textContent = forced === undefined ? "" : forced === "keep" ? "kept by you" : "binned by you";
+    const exposure = badExposure(photo);
+    badge.textContent =
+      forced !== undefined ? (forced === "keep" ? "kept by you" : "binned by you")
+        : exposure ? exposure
+          : photo.burst ? `burst ${photo.burst.index}/${photo.burst.size}` +
+                          (photo.burst.pick ? " \u00b7 sharpest" : "")
+            : "";
+    card.classList.toggle("photo-pick", Boolean(photo.burst && photo.burst.pick));
     card.classList.toggle("photo-forced", forced !== undefined);
     card.title = forced === undefined
       ? `${photo.name} \u2014 decoded via ${photo.decode}. Click to force keep.`
@@ -414,25 +534,76 @@
   const viewerImg = el("viewer-img");
   const viewerStage = el("viewer-stage");
 
+  /* Culling is a judgement made once per photo, dozens of times in a row. The
+     viewer is where the judgement is actually possible - a grid thumbnail
+     cannot show you whether a frame is sharp - so the verdict is taken here,
+     with the keyboard, and the next photo is already on screen. */
+  let viewingAt = -1;
+
   function openViewer(photo) {
+    showAt(state.photos.indexOf(photo));
+    viewer.classList.remove("hidden");
+  }
+
+  function showAt(index) {
+    if (index < 0 || index >= state.photos.length) return;
+    viewingAt = index;
+    const photo = state.photos[index];
     el("viewer-name").textContent = photo.name;
     el("viewer-shot").textContent = photo.shot || "";
     el("viewer-score").textContent = `blur score ${photo.score.toFixed(1)}`;
+    el("viewer-position").textContent = `${index + 1} / ${state.photos.length}`;
     // A big render, because the point is to judge whether it is actually sharp.
     viewerImg.src = `/api/preview/${encodeURIComponent(photo.name)}?from=input&size=2400&lut=none`;
     viewerStage.classList.remove("zoomed");
-    viewer.classList.remove("hidden");
+    paintVerdict();
+  }
+
+  function paintVerdict() {
+    const photo = state.photos[viewingAt];
+    const node = el("viewer-verdict");
+    if (!photo) { node.textContent = ""; return; }
+    const forced = state.overrides.get(photo.name);
+    const bucket = bucketOf(photo);
+    node.textContent = (forced !== undefined ? "you: " : "threshold: ") + bucket;
+    node.className = "viewer-verdict " + (bucket === "keep" ? "is-keep" : "is-reject");
+  }
+
+  /* Decide, then move on. Stopping on the last photo rather than wrapping:
+     wrapping round to the start silently re-judges work already done. */
+  function judge(bucket) {
+    const photo = state.photos[viewingAt];
+    if (!photo) return;
+    if (bucket === null) state.overrides.delete(photo.name);
+    else state.overrides.set(photo.name, bucket);
+    render();
+    if (viewingAt + 1 < state.photos.length) showAt(viewingAt + 1);
+    else { paintVerdict(); toast("Last photo. Apply & copy writes the sort to disk."); }
   }
 
   function closeViewer() {
     viewer.classList.add("hidden");
     viewerImg.src = "";
+    viewingAt = -1;
   }
 
   viewerStage.addEventListener("click", () => viewerStage.classList.toggle("zoomed"));
   el("viewer-close").addEventListener("click", closeViewer);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !viewer.classList.contains("hidden")) closeViewer();
+    if (viewer.classList.contains("hidden")) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const action = {
+      escape: closeViewer,
+      arrowright: () => showAt(viewingAt + 1),
+      arrowleft: () => showAt(viewingAt - 1),
+      k: () => judge("keep"),
+      x: () => judge("reject"),
+      u: () => judge(null),
+    }[key];
+    if (!action) return;
+    e.preventDefault();
+    action();
   });
 
   /* ---------------- uploading ---------------- */

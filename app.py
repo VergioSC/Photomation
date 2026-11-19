@@ -90,6 +90,7 @@ def api_scan():
                 image, label = store.load_image(ref)
                 score = cull.blur_score_of(image)
                 shot = exif_module.read(ref.path)
+                black, blown = cull.exposure_of(image)
                 payload = {
                     "type": "photo",
                     "index": index,
@@ -101,6 +102,12 @@ def api_scan():
                     # belong next to the verdict rather than hidden away.
                     "shot": shot.summary() if shot.known else "",
                     "iso": shot.iso,
+                    # What the frame looks like, as 64 bits, so the page can
+                    # spot the same shot fired ten times. Hex because
+                    # JavaScript numbers cannot hold 64 bits of integer.
+                    "signature": f"{cull.signature_of(image):016x}",
+                    "black": round(black, 4),
+                    "blown": round(blown, 4),
                 }
             except cull.LoadError as exc:
                 payload = {

@@ -37,6 +37,10 @@
       </p>
     </section>
 
+    <!-- What the scan noticed beyond sharpness: repeated frames, and frames
+         that are a mistake rather than a dark or bright photograph. -->
+    <div class="findings hidden" id="findings"></div>
+
     <section class="panel empty {% if photo_count %}hidden{% endif %}" id="empty-state">
       <h3>No signal</h3>
       <p>Feed it some photos above, then hit rescan.</p>
@@ -133,12 +137,18 @@
     <span class="mono" id="viewer-name"></span>
     <span class="caption" id="viewer-shot"></span>
     <span class="caption mono" id="viewer-score"></span>
-    <button class="btn btn-secondary btn-small" id="viewer-close" style="margin-left:auto">Close</button>
+    <span class="viewer-verdict" id="viewer-verdict"></span>
+    <span class="caption mono" id="viewer-position" style="margin-left:auto"></span>
+    <button class="btn btn-secondary btn-small" id="viewer-close">Close</button>
   </div>
   <div class="viewer-stage" id="viewer-stage">
     <img id="viewer-img" alt="">
   </div>
-  <p class="caption viewer-hint">Click the photo to zoom to 100%. Esc closes.</p>
+  <p class="caption viewer-hint">
+    <b>K</b> keep &nbsp; <b>X</b> bin &nbsp; <b>U</b> undo the choice &nbsp;&middot;&nbsp;
+    each moves to the next photo. <b>&larr; &rarr;</b> move without choosing.
+    Click the photo to zoom to 100%. <b>Esc</b> closes.
+  </p>
 </div>
 {% endblock %}
 

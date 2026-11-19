@@ -298,3 +298,46 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ------------------------------------------------- near-duplicates and exposure
+#
+# Sharpness alone is a poor way to cull a shoot. Fire ten frames at the same
+# thing and all ten score well, so all ten are kept and the choosing is still
+# ahead of you. And a frame that is entirely black or entirely blown out can
+# score high on sharpness, because clipped edges are hard edges.
+
+SIGNATURE_SIDE = 9          # 9 columns give an 8-bit row, so 8 rows = 64 bits
+
+
+def signature_of(image):
+    """A 64-bit difference hash: what the photo looks like, very roughly.
+
+    Each bit says whether one cell is brighter than the cell to its right.
+    That survives exposure changes, resizing and JPEG noise, and differs
+    sharply between two different scenes - which is exactly the question
+    "is this the same shot again?".
+    """
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    small = cv2.resize(grey, (SIGNATURE_SIDE, SIGNATURE_SIDE - 1),
+                       interpolation=cv2.INTER_AREA).astype(np.int16)
+    bits = (small[:, 1:] > small[:, :-1]).flatten()
+    value = 0
+    for bit in bits:
+        value = (value << 1) | int(bit)
+    return value
+
+
+def signature_distance(a, b):
+    """How many of the 64 bits differ. 0 is identical, 64 is opposite."""
+    return bin(a ^ b).count("1")
+
+
+def exposure_of(image):
+    """What share of the frame is crushed to black and blown to white.
+
+    Measured on the already-shrunk scoring copy, which is all this needs.
+    """
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    total = grey.size
+    return (float((grey <= 4).sum()) / total, float((grey >= 251).sum()) / total)
