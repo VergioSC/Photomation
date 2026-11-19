@@ -9,6 +9,31 @@ hundred frames after a shoot.
 
 ## How the culling works
 
+Three things are measured per photo, not one.
+
+**Sharpness**, the variance of the Laplacian — see below.
+
+**What the frame is**, as a 64-bit difference hash: whether each cell is
+brighter than the one to its right. That survives exposure changes, resizing
+and JPEG noise but differs sharply between two different scenes, which is
+exactly the question *"is this the same shot again?"*. Runs of consecutive
+photos within 10 bits of each other are one burst, and the sharpest frame of
+each is the pick. Consecutive on purpose: two similar frames from opposite ends
+of a shoot are two photographs, not a burst. The threshold came from a real
+shoot — five frames of one scene sat 2–8 bits apart and every unrelated frame
+was 23 or more. On that shoot of 56 photos it finds **12 bursts and 40
+redundant frames**, turning a 56-decision cull into 16.
+
+**Exposure**, the share of the frame crushed to black or blown to white.
+Sharpness cannot catch these: a clipped edge is still a hard edge, so a frame
+that is simply black can score well.
+
+Culling is a judgement made dozens of times in a row, and a grid thumbnail
+cannot show you whether a frame is sharp. Open any photo and judge it with the
+keyboard: **K** keeps, **X** bins, **U** undoes, and each moves straight to the
+next photo with it already on screen. Arrows move without deciding.
+
+
 Blur is measured as the **variance of the Laplacian**. The Laplacian is a
 second-derivative edge filter: it responds strongly where brightness changes
 quickly. A sharp photo therefore produces a wide spread of edge responses and a
@@ -190,6 +215,28 @@ The film simulations themselves are approximations too, each built from a
 channel mixer, a tone curve and a saturation setting, with the monochrome ones
 using their own channel weights (which is what gives different black-and-white
 films their different skies and skin tones).
+
+### Your work is on disk, not in the tab
+
+Edits are written to `output/edits.json` as you make them, beside the photos
+they describe, and loaded before the first photo opens. Closing the page, a
+reload or a crash no longer costs the afternoon. They are written to a
+temporary file and renamed, because a half-written file here would lose
+everything. Leaving the Edit page with unexported edits asks first, and offers
+to export and then go.
+
+**Export this one** writes just the photo on screen and deliberately does *not*
+clear `output/graded` first — exporting one frame must not throw away the
+fifty-five already done. **Bin this one** moves a photo out of the keepers
+without going back to Cull and starting the sort again.
+
+### Nothing is deleted, so empty the trash yourself
+
+Every destructive action in Photomation moves files to `output/.trash` instead
+of deleting them. That folder therefore only grows — it reached 702MB on the
+machine this was written on. The **Empty trash** button on the Cull page says
+how much is in there and is the one genuinely unrecoverable action in the app,
+which is why it has its own confirmation.
 
 ### Every photo keeps its own edit
 
@@ -536,6 +583,49 @@ to a container or a mounted volume without code changes:
 | `PHOTOMATION_HOST` | `127.0.0.1` | bind address |
 | `PHOTOMATION_PORT` | `5000` | port |
 | `PHOTOMATION_THRESHOLD` | `100` | starting threshold |
+
+## Running somewhere other than this laptop
+
+`storage.py` is an interface, not a folder reader, and `storage_s3.py` is the
+second implementation of it:
+
+```bash
+pip install boto3                       # kept out of requirements.txt: ~80MB
+export PHOTOMATION_STORAGE=s3
+export PHOTOMATION_S3_BUCKET=my-bucket
+export PHOTOMATION_S3_PREFIX=shoots/2026-11/     # optional
+```
+
+It syncs the bucket into the working folder and is then a `LocalStorage` over
+it, because rawpy, pillow-heif and the EXIF reader all open files by path. That
+is also how an image service really works: pull the object, do the work, push
+the result. Sorted photos go back up under `keep/` and `reject/`. Credentials
+are never read by this app — boto3 takes them from the environment, `~/.aws` or
+the instance role.
+
+### A password, before anything is published
+
+`/api/upload` accepts files from whoever can reach the port. That is harmless
+on `127.0.0.1` and an open file-upload endpoint anywhere else, so:
+
+```bash
+export PHOTOMATION_PASSWORD=something-long
+export PHOTOMATION_USERNAME=photomation     # optional, this is the default
+```
+
+Every route is then behind HTTP Basic — not only upload, because a thumbnail is
+somebody's photograph too. **The app refuses to start on a non-loopback host
+without a password**, and refuses before it touches anything, so a misconfigured
+start costs nothing. The single exemption is `/api/health`: an orchestrator has
+no credentials and should not be given any, and it stops reporting the input
+path once a password is set.
+
+### CI
+
+`.github/workflows/ci.yml` runs `tests/run_all.py` on every push, separately
+imports every module — a bad import in one no test touches would otherwise only
+show up when someone opened the page — then builds the image and checks the
+container answers.
 
 ## Running in a container
 
