@@ -58,6 +58,19 @@ CACHE_LIMIT_MB = int(os.environ.get("PHOTOMATION_CACHE_MB", "512"))
 # in the middle of one.
 CLEAR_ON_START = os.environ.get("PHOTOMATION_KEEP_BATCH", "") not in ("1", "true", "yes")
 
+# Where the photos come from. "local" reads input/; "s3" keeps input/ in step
+# with a bucket (see storage_s3.py). Credentials are never read here: boto3
+# takes them from the environment, ~/.aws or the instance role.
+STORAGE_BACKEND = os.environ.get("PHOTOMATION_STORAGE", "local").lower()
+S3_BUCKET = os.environ.get("PHOTOMATION_S3_BUCKET", "")
+S3_PREFIX = os.environ.get("PHOTOMATION_S3_PREFIX", "")
+
+# When set, every request must carry this password over HTTP Basic auth.
+# Unset means no authentication, which is correct on 127.0.0.1 and wrong
+# anywhere else - app.py refuses to listen on a public interface without it.
+PASSWORD = os.environ.get("PHOTOMATION_PASSWORD", "")
+USERNAME = os.environ.get("PHOTOMATION_USERNAME", "photomation")
+
 # Longest side of the editor's preview. It is shown large on a Retina screen,
 # where CSS pixels are doubled, so a 480px thumbnail was being blown up about
 # five times and looked pixellated.

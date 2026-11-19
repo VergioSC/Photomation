@@ -29,6 +29,12 @@ ENV PHOTOMATION_INPUT=/data/input \
     PHOTOMATION_HOST=0.0.0.0 \
     PHOTOMATION_PORT=5000
 
+# A published port means other machines can reach this. app.py refuses to
+# start on a non-loopback host without a password, so a deployed run needs:
+#   -e PHOTOMATION_PASSWORD=something
+# To read a shoot from S3 instead of a mounted folder, add boto3 to the image
+# and set PHOTOMATION_STORAGE=s3 and PHOTOMATION_S3_BUCKET.
+
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \

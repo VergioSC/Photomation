@@ -1,0 +1,66 @@
+# Runs on every push and pull request. The tests are plain asserts with no
+# framework, so there is nothing to install beyond the app's own dependencies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Only the S3 tests need this, and they use a stub client rather
+          # than a bucket, so no credentials are involved.
+          pip install boto3
+
+      - name: Run the tests
+        run: python tests/run_all.py
+
+      - name: Check every module imports
+        # A syntax error or a bad import in a module no test touches would
+        # otherwise only show up when someone opened the page.
+        env:
+          PHOTOMATION_KEEP_BATCH: "1"
+        run: |
+          for module in app auto config cull edit exif lut masks recipes storage storage_s3; do
+            python -c "import $module" || exit 1
+          done
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the container image
+        run: docker build -t photomation:ci .
+
+      - name: Check it starts and answers
+        run: |
+          docker run -d --name photomation -p 5000:5000 \
+            -e PHOTOMATION_PASSWORD=ci-only \
+            photomation:ci
+          for attempt in $(seq 30); do
+            # /api/health is deliberately not behind the password: an
+            # orchestrator has no credentials and should not be given any.
+            if curl -fsS http://127.0.0.1:5000/api/health; then
+              echo "\nhealthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "never became healthy; container log follows:"
+          docker logs photomation
+          exit 1

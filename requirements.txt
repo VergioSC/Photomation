@@ -21,3 +21,8 @@ gunicorn==23.0.0          # the server the container runs. Flask's own is a
                           # development server: single connection at a time, no
                           # request limits, and it says so in its own startup
                           # warning. Not used when running app.py directly.
+
+# Optional: only needed for PHOTOMATION_STORAGE=s3. Left out of the pinned set
+# above because boto3 and botocore are ~80MB and a local run never touches
+# them. Install with:  pip install boto3
+#   boto3

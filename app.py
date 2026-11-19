@@ -24,6 +24,8 @@ from PIL import Image as PILImage
 from flask import Flask, Response, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
+import secrets
+
 import config
 import cull
 import auto as auto_module
@@ -33,14 +35,52 @@ import lut as lut_module
 import masks as masks_module
 import recipes as recipes_module
 import storage as storage_module
+import storage_s3
 from storage import LocalStorage
 
 app = Flask(__name__)
 # RAW files run to 50-100 MB each, so a batch upload needs real headroom.
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_BYTES
-store = LocalStorage()
+store = storage_s3.from_env() or LocalStorage()
 # The grading step works on what survived culling, so it lists output/keep.
 keep_store = LocalStorage(input_dir=config.KEEP_DIR)
+
+
+@app.before_request
+def _require_password():
+    """Gate every route when PHOTOMATION_PASSWORD is set.
+
+    /api/upload accepts files from anyone who can reach the port. That is
+    harmless on 127.0.0.1 and an open file-upload endpoint anywhere else, so
+    the check guards everything rather than that one route - a thumbnail is
+    somebody's photograph too.
+
+    HTTP Basic because the browser handles the prompt, the retry and the
+    credential store itself, and it covers images and streams that cannot
+    carry a header of their own.
+    """
+    if not config.PASSWORD or request.path == "/api/health":
+        return None
+    sent = request.authorization
+    ok = (sent is not None
+          and secrets.compare_digest(sent.username or "", config.USERNAME)
+          and secrets.compare_digest(sent.password or "", config.PASSWORD))
+    if ok:
+        return None
+    return Response("Authentication required.", 401,
+                    {"WWW-Authenticate": 'Basic realm="Photomation"'})
+
+# Checked before anything else happens, and at import rather than in
+# __main__, so it also guards `gunicorn app:app`, where __main__ never runs.
+# Listening on anything but the loopback address means other machines can
+# reach this, and without a password every one of them can read the photos and
+# upload more. Refuse rather than quietly serve them - and refuse BEFORE the
+# batch below is cleared, or a misconfigured start costs a shoot as well.
+if config.HOST not in ("127.0.0.1", "localhost", "::1") and not config.PASSWORD:
+    raise SystemExit(
+        f"Refusing to serve on {config.HOST} with no password: anyone who can "
+        f"reach this port could read the photos and upload their own.\n"
+        f"Set PHOTOMATION_PASSWORD, or use PHOTOMATION_HOST=127.0.0.1.")
 
 # A batch is one shoot, and starting the server starts a new one. Without this
 # the dashboard opens on whatever was left in input/ from the last session and
@@ -762,7 +802,15 @@ def api_download(bucket):
 
 @app.get("/api/health")
 def api_health():
-    """Liveness probe, for a container orchestrator later."""
+    """Liveness probe. The one route that is never behind the password.
+
+    A health check is made by the orchestrator, which has no credentials and
+    should not be given any, so this answers without them - and says nothing
+    about the machine it is running on when a password is set, since anyone
+    at all can ask it.
+    """
+    if config.PASSWORD:
+        return jsonify({"status": "ok"})
     return jsonify({"status": "ok", "input_dir": str(config.INPUT_DIR)})
 
 
